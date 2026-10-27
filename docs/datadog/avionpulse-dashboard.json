@@ -1,0 +1,1168 @@
+{
+  "title": "AvionPulse v3 — Cloud Health",
+  "description": "Health of AvionPulse v3 (AvionDash suite): serverless core, AWS infrastructure drift, integrations and the on-demand Classic tier.",
+  "layout_type": "ordered",
+  "template_variables": [
+    {
+      "name": "env",
+      "prefix": "env",
+      "available_values": [],
+      "default": "demo"
+    }
+  ],
+  "widgets": [
+    {
+      "definition": {
+        "type": "note",
+        "content": "**AvionPulse v3 — Cloud Health.** Rows follow the architecture: business → edge → compute → data → async → AWS infrastructure → integrations → Classic tier → alerts. CloudWatch-polled widgets lag 5–15 min; Lambda enhanced, custom metrics, APM and logs are near real time. The Classic group shows no data while that tier is offline. Orange event bars = chaos toggles (`sources:avionpulse-chaos`). Inject faults at `https://<site>/#chaos`; every fault auto-reverts after its TTL.",
+        "background_color": "blue",
+        "font_size": "14",
+        "text_align": "left",
+        "show_tick": false,
+        "tick_pos": "50%",
+        "tick_edge": "left",
+        "has_padding": true
+      }
+    },
+    {
+      "definition": {
+        "type": "group",
+        "title": "Business health",
+        "background_color": "vivid_green",
+        "layout_type": "ordered",
+        "show_title": true,
+        "widgets": [
+          {
+            "definition": {
+              "type": "query_value",
+              "title": "Airborne now",
+              "precision": 0,
+              "autoscale": true,
+              "requests": [
+                {
+                  "q": "avg:avionpulse.flights.airborne{$env}",
+                  "aggregator": "last",
+                  "conditional_formats": [
+                    {
+                      "comparator": "<",
+                      "value": 1,
+                      "palette": "white_on_red"
+                    },
+                    {
+                      "comparator": ">=",
+                      "value": 1,
+                      "palette": "white_on_green"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "query_value",
+              "title": "Passengers airborne",
+              "precision": 0,
+              "autoscale": true,
+              "requests": [
+                {
+                  "q": "avg:avionpulse.pax.airborne{$env}",
+                  "aggregator": "last",
+                  "conditional_formats": [
+                    {
+                      "comparator": ">",
+                      "value": 20000,
+                      "palette": "white_on_red"
+                    },
+                    {
+                      "comparator": "<=",
+                      "value": 20000,
+                      "palette": "white_on_green"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "query_value",
+              "title": "On-time %",
+              "precision": 1,
+              "autoscale": true,
+              "requests": [
+                {
+                  "q": "avg:avionpulse.flights.on_time_pct{$env}",
+                  "aggregator": "last",
+                  "conditional_formats": [
+                    {
+                      "comparator": "<",
+                      "value": 60,
+                      "palette": "white_on_yellow"
+                    },
+                    {
+                      "comparator": ">=",
+                      "value": 60,
+                      "palette": "white_on_green"
+                    }
+                  ]
+                }
+              ],
+              "custom_unit": "%"
+            }
+          },
+          {
+            "definition": {
+              "type": "query_value",
+              "title": "Data age (s)",
+              "precision": 0,
+              "autoscale": true,
+              "requests": [
+                {
+                  "q": "max:avionpulse.data.staleness_s{$env}",
+                  "aggregator": "last",
+                  "conditional_formats": [
+                    {
+                      "comparator": ">",
+                      "value": 900,
+                      "palette": "white_on_red"
+                    },
+                    {
+                      "comparator": ">",
+                      "value": 600,
+                      "palette": "white_on_yellow"
+                    },
+                    {
+                      "comparator": "<=",
+                      "value": 600,
+                      "palette": "white_on_green"
+                    }
+                  ]
+                }
+              ],
+              "custom_unit": "s"
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Flights by state",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "avg:avionpulse.flights.airborne{$env}",
+                  "display_type": "bars"
+                },
+                {
+                  "q": "avg:avionpulse.flights.delayed{$env}",
+                  "display_type": "bars"
+                },
+                {
+                  "q": "avg:avionpulse.flights.cancelled{$env}",
+                  "display_type": "bars"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Chaos switches",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:avionpulse.chaos.toggle{$env} by {fault}.as_count()",
+                  "display_type": "bars",
+                  "style": {
+                    "palette": "orange"
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "group",
+        "title": "Edge — CloudFront / API Gateway",
+        "background_color": "pink",
+        "layout_type": "ordered",
+        "show_title": true,
+        "widgets": [
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "API Gateway requests",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.apigateway.count{apiid:REPLACE_WITH_API_ID}.as_count()",
+                  "display_type": "bars"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "API Gateway 4xx vs 5xx",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.apigateway.4xx{apiid:REPLACE_WITH_API_ID}.as_count()",
+                  "display_type": "bars",
+                  "style": {
+                    "palette": "warm"
+                  }
+                },
+                {
+                  "q": "sum:aws.apigateway.5xx{apiid:REPLACE_WITH_API_ID}.as_count()",
+                  "display_type": "bars",
+                  "style": {
+                    "palette": "warm"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Latency vs integration latency (ms)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "avg:aws.apigateway.latency{apiid:REPLACE_WITH_API_ID}",
+                  "display_type": "line"
+                },
+                {
+                  "q": "avg:aws.apigateway.integration_latency{apiid:REPLACE_WITH_API_ID}",
+                  "display_type": "line"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "App requests by status class",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:avionpulse.api.requests{$env} by {status_class}.as_count()",
+                  "display_type": "bars"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "API latency p95 (ms)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "p95:avionpulse.api.latency_ms{$env}",
+                  "display_type": "line"
+                }
+              ],
+              "markers": [
+                {
+                  "value": "y = 2000",
+                  "display_type": "error dashed",
+                  "label": "SLO"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "group",
+        "title": "Compute — Lambda",
+        "background_color": "orange",
+        "layout_type": "ordered",
+        "show_title": true,
+        "widgets": [
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Invocations by function",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.lambda.enhanced.invocations{service:avionpulse} by {functionname}.as_count()",
+                  "display_type": "bars"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Errors by function",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.lambda.enhanced.errors{service:avionpulse} by {functionname}.as_count()",
+                  "display_type": "bars",
+                  "style": {
+                    "palette": "red"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Timeouts & out-of-memory",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.lambda.enhanced.timeouts{service:avionpulse}.as_count()",
+                  "display_type": "bars",
+                  "style": {
+                    "palette": "warm"
+                  }
+                },
+                {
+                  "q": "sum:aws.lambda.enhanced.out_of_memory{service:avionpulse}.as_count()",
+                  "display_type": "bars",
+                  "style": {
+                    "palette": "warm"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "API duration avg / max (s)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "avg:aws.lambda.enhanced.duration{functionname:avionpulse-api}",
+                  "display_type": "line"
+                },
+                {
+                  "q": "max:aws.lambda.enhanced.duration{functionname:avionpulse-api}",
+                  "display_type": "line"
+                }
+              ],
+              "markers": [
+                {
+                  "value": "y = 10",
+                  "display_type": "error dashed",
+                  "label": "timeout"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Cold starts (API)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.lambda.enhanced.invocations{functionname:avionpulse-api,cold_start:true}.as_count()",
+                  "display_type": "bars",
+                  "style": {
+                    "palette": "cool"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Init duration (s)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "avg:aws.lambda.enhanced.init_duration{functionname:avionpulse-api}",
+                  "display_type": "line"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Max memory used (MB)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "max:aws.lambda.enhanced.max_memory_used{service:avionpulse} by {functionname}",
+                  "display_type": "line"
+                }
+              ],
+              "markers": [
+                {
+                  "value": "y = 256",
+                  "display_type": "error dashed",
+                  "label": "limit"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Throttles",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.lambda.throttles{app:avionpulse} by {functionname}.as_count()",
+                  "display_type": "bars",
+                  "style": {
+                    "palette": "red"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "query_value",
+              "title": "Estimated Lambda cost",
+              "precision": 4,
+              "autoscale": true,
+              "requests": [
+                {
+                  "q": "sum:aws.lambda.enhanced.estimated_cost{service:avionpulse}.as_count()",
+                  "aggregator": "last",
+                  "conditional_formats": []
+                }
+              ],
+              "custom_unit": "$"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "group",
+        "title": "Data — DynamoDB / S3",
+        "background_color": "blue",
+        "layout_type": "ordered",
+        "show_title": true,
+        "widgets": [
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Read capacity: consumed vs provisioned",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.dynamodb.consumed_read_capacity_units{tablename:avionpulse-data}.as_rate()",
+                  "display_type": "line"
+                },
+                {
+                  "q": "avg:aws.dynamodb.provisioned_read_capacity_units{tablename:avionpulse-data}",
+                  "display_type": "line"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Write capacity: consumed vs provisioned",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.dynamodb.consumed_write_capacity_units{tablename:avionpulse-data}.as_rate()",
+                  "display_type": "line"
+                },
+                {
+                  "q": "avg:aws.dynamodb.provisioned_write_capacity_units{tablename:avionpulse-data}",
+                  "display_type": "line"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Throttle events",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.dynamodb.read_throttle_events{tablename:avionpulse-data}.as_count()",
+                  "display_type": "bars",
+                  "style": {
+                    "palette": "red"
+                  }
+                },
+                {
+                  "q": "sum:aws.dynamodb.write_throttle_events{tablename:avionpulse-data}.as_count()",
+                  "display_type": "bars",
+                  "style": {
+                    "palette": "red"
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "DynamoDB calls by operation (span metric)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:avionpulse.ddb.calls{*} by {@aws.operation}.as_count()",
+                  "display_type": "bars"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "log_stream",
+              "title": "Data-tier failures",
+              "query": "service:avionpulse \"Request failed\"",
+              "indexes": [],
+              "columns": [
+                "host",
+                "service"
+              ],
+              "message_display": "expanded-md",
+              "show_date_column": true,
+              "show_message_column": true,
+              "sort": {
+                "column": "time",
+                "order": "desc"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "group",
+        "title": "Async — SQS / EventBridge",
+        "background_color": "yellow",
+        "layout_type": "ordered",
+        "show_title": true,
+        "widgets": [
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Events queue depth",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "max:aws.sqs.approximate_number_of_messages_visible{queuename:avionpulse-events}",
+                  "display_type": "line"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Oldest message age (s)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "max:aws.sqs.approximate_age_of_oldest_message{queuename:avionpulse-events}",
+                  "display_type": "line"
+                }
+              ],
+              "markers": [
+                {
+                  "value": "y = 600",
+                  "display_type": "error dashed",
+                  "label": "alert"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "query_value",
+              "title": "DLQ depth",
+              "precision": 0,
+              "autoscale": true,
+              "requests": [
+                {
+                  "q": "max:aws.sqs.approximate_number_of_messages_visible{queuename:avionpulse-events-dlq}",
+                  "aggregator": "last",
+                  "conditional_formats": [
+                    {
+                      "comparator": ">",
+                      "value": 0,
+                      "palette": "white_on_red"
+                    },
+                    {
+                      "comparator": "<=",
+                      "value": 0,
+                      "palette": "white_on_green"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Events processed vs poison",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:avionpulse.events.processed{$env}.as_count()",
+                  "display_type": "bars"
+                },
+                {
+                  "q": "sum:avionpulse.events.poison{$env}.as_count()",
+                  "display_type": "bars"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Queue processing lag (s)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "avg:avionpulse.queue.processing_lag_s{$env}",
+                  "display_type": "line"
+                },
+                {
+                  "q": "max:avionpulse.queue.processing_lag_s{$env}",
+                  "display_type": "line"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Simulator runs & errors",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.lambda.enhanced.invocations{functionname:avionpulse-simulator}.as_count()",
+                  "display_type": "bars"
+                },
+                {
+                  "q": "sum:aws.lambda.enhanced.errors{functionname:avionpulse-simulator}.as_count()",
+                  "display_type": "bars"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "group",
+        "title": "AWS infrastructure (v3) — config drift & security",
+        "background_color": "orange",
+        "layout_type": "ordered",
+        "show_title": true,
+        "widgets": [
+          {
+            "definition": {
+              "type": "log_stream",
+              "title": "Config changes by the app role (CloudTrail)",
+              "query": "source:cloudtrail @userIdentity.arn:*avionpulse-AppRole* -@evt.name:(Describe* OR Get* OR List* OR SendMessage OR Publish OR PutEvents OR StartExecution OR PutObject OR GenerateDataKey OR Decrypt)",
+              "indexes": [],
+              "columns": [
+                "host",
+                "service"
+              ],
+              "message_display": "expanded-md",
+              "show_date_column": true,
+              "show_message_column": true,
+              "sort": {
+                "column": "time",
+                "order": "desc"
+              }
+            }
+          },
+          {
+            "definition": {
+              "type": "log_stream",
+              "title": "Chaos events",
+              "query": "service:avionpulse \"[EVENT]\"",
+              "indexes": [],
+              "columns": [
+                "host",
+                "service"
+              ],
+              "message_display": "expanded-md",
+              "show_date_column": true,
+              "show_message_column": true,
+              "sort": {
+                "column": "time",
+                "order": "desc"
+              }
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "DynamoDB provisioned capacity",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "avg:aws.dynamodb.provisioned_read_capacity_units{tablename:avionpulse-data}",
+                  "display_type": "line"
+                },
+                {
+                  "q": "avg:aws.dynamodb.provisioned_write_capacity_units{tablename:avionpulse-data}",
+                  "display_type": "line"
+                }
+              ],
+              "events": [
+                {
+                  "q": "sources:avionpulse-chaos"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Simulator invocations (gap = schedule disabled)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.lambda.enhanced.invocations{functionname:avionpulse-simulator}.as_count()",
+                  "display_type": "bars"
+                }
+              ],
+              "events": [
+                {
+                  "q": "sources:avionpulse-chaos"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Worker errors vs invocations",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.lambda.errors{functionname:avionpulse-worker}.as_count()",
+                  "display_type": "bars"
+                },
+                {
+                  "q": "sum:aws.lambda.invocations{functionname:avionpulse-worker}.as_count()",
+                  "display_type": "bars"
+                }
+              ],
+              "events": [
+                {
+                  "q": "sources:avionpulse-chaos"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Events queue: sent vs deleted",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.sqs.number_of_messages_sent{queuename:avionpulse-events}.as_count()",
+                  "display_type": "bars"
+                },
+                {
+                  "q": "sum:aws.sqs.number_of_messages_deleted{queuename:avionpulse-events}.as_count()",
+                  "display_type": "bars"
+                }
+              ],
+              "events": [
+                {
+                  "q": "sources:avionpulse-chaos"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "group",
+        "title": "Integrations (v3) — bus · SNS · Step Functions · Streams · S3",
+        "background_color": "purple",
+        "layout_type": "ordered",
+        "show_title": true,
+        "widgets": [
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Received by channel",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:avionpulse.integration.received{$env} by {channel}.as_count()",
+                  "display_type": "bars"
+                }
+              ],
+              "events": [
+                {
+                  "q": "sources:avionpulse-chaos"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Producer errors by channel",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:avionpulse.integration.errors{$env} by {channel}.as_count()",
+                  "display_type": "bars"
+                }
+              ],
+              "events": [
+                {
+                  "q": "sources:avionpulse-chaos"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "EventBridge failed invocations",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.events.failed_invocations{rulename:avionpulse-flight-status}.as_count()",
+                  "display_type": "bars"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "SNS failed deliveries",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.sns.number_of_notifications_failed{topicname:avionpulse-crew-alerts}.as_count()",
+                  "display_type": "bars"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Turnaround workflow failures",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.states.executions_failed{statemachinearn:*avionpulse-turnaround*}.as_count()",
+                  "display_type": "bars"
+                },
+                {
+                  "q": "sum:aws.states.executions_timed_out{statemachinearn:*avionpulse-turnaround*}.as_count()",
+                  "display_type": "bars"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Stream iterator age (ms)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "max:aws.lambda.iterator_age{functionname:avionpulse-processor}",
+                  "display_type": "line"
+                }
+              ],
+              "markers": [
+                {
+                  "value": "y = 300000",
+                  "display_type": "error dashed",
+                  "label": "5 min"
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "group",
+        "title": "Classic tier (v3, on demand) — no data while offline",
+        "background_color": "blue",
+        "layout_type": "ordered",
+        "show_title": true,
+        "widgets": [
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Healthy / unhealthy hosts",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "max:aws.applicationelb.healthy_host_count{loadbalancer:app/avionpulse-classic/*}",
+                  "display_type": "line"
+                },
+                {
+                  "q": "max:aws.applicationelb.un_healthy_host_count{loadbalancer:app/avionpulse-classic/*}",
+                  "display_type": "line"
+                }
+              ],
+              "events": [
+                {
+                  "q": "sources:avionpulse-chaos"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "ALB 5xx and fixed responses",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "sum:aws.applicationelb.httpcode_elb_5xx{loadbalancer:app/avionpulse-classic/*}.as_count()",
+                  "display_type": "bars"
+                },
+                {
+                  "q": "sum:aws.applicationelb.http_fixed_response_count{loadbalancer:app/avionpulse-classic/*}.as_count()",
+                  "display_type": "bars"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Target response time (s)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "avg:aws.applicationelb.target_response_time.average{loadbalancer:app/avionpulse-classic/*}",
+                  "display_type": "line"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Host CPU (Agent)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "avg:system.cpu.user{tier:classic} by {host}",
+                  "display_type": "line"
+                }
+              ],
+              "events": [
+                {
+                  "q": "sources:avionpulse-chaos"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "ASG instances in service",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "min:aws.autoscaling.group_in_service_instances{autoscalinggroupname:avionpulse-classic-gates}",
+                  "display_type": "line"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "RDS connections & CPU",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "avg:aws.rds.database_connections{tier:classic}",
+                  "display_type": "line"
+                },
+                {
+                  "q": "avg:aws.rds.cpuutilization{tier:classic}",
+                  "display_type": "line"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Gate service p95 (s)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "p95:trace.http.request{service:avionpulse-gates}",
+                  "display_type": "line"
+                },
+                {
+                  "q": "p95:trace.postgres.query{$env}",
+                  "display_type": "line"
+                }
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "log_stream",
+              "title": "Gate service errors",
+              "query": "service:avionpulse-gates status:error",
+              "indexes": [],
+              "columns": [
+                "host",
+                "service"
+              ],
+              "message_display": "expanded-md",
+              "show_date_column": true,
+              "show_message_column": true,
+              "sort": {
+                "column": "time",
+                "order": "desc"
+              }
+            }
+          }
+        ]
+      }
+    },
+    {
+      "definition": {
+        "type": "group",
+        "title": "Alerts & logs",
+        "background_color": "gray",
+        "layout_type": "ordered",
+        "show_title": true,
+        "widgets": [
+          {
+            "definition": {
+              "type": "manage_status",
+              "title": "AvionPulse monitors",
+              "query": "tag:app:avionpulse",
+              "summary_type": "monitors",
+              "display_format": "countsAndList",
+              "color_preference": "text",
+              "hide_zero_counts": true,
+              "show_last_triggered": true,
+              "sort": "status,asc"
+            }
+          },
+          {
+            "definition": {
+              "type": "log_stream",
+              "title": "Error logs",
+              "query": "service:avionpulse status:error",
+              "indexes": [],
+              "columns": [
+                "host",
+                "service"
+              ],
+              "message_display": "expanded-md",
+              "show_date_column": true,
+              "show_message_column": true,
+              "sort": {
+                "column": "time",
+                "order": "desc"
+              }
+            }
+          },
+          {
+            "definition": {
+              "type": "log_stream",
+              "title": "Chaos activity",
+              "query": "service:avionpulse \"[CHAOS]\"",
+              "indexes": [],
+              "columns": [
+                "host",
+                "service"
+              ],
+              "message_display": "expanded-md",
+              "show_date_column": true,
+              "show_message_column": true,
+              "sort": {
+                "column": "time",
+                "order": "desc"
+              }
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Log volume by status",
+              "show_legend": true,
+              "requests": [
+                {
+                  "response_format": "timeseries",
+                  "display_type": "bars",
+                  "queries": [
+                    {
+                      "data_source": "logs",
+                      "name": "q1",
+                      "indexes": [
+                        "*"
+                      ],
+                      "search": {
+                        "query": "service:avionpulse"
+                      },
+                      "compute": {
+                        "aggregation": "count"
+                      },
+                      "group_by": [
+                        {
+                          "facet": "status",
+                          "limit": 10,
+                          "sort": {
+                            "aggregation": "count",
+                            "order": "desc"
+                          }
+                        }
+                      ]
+                    }
+                  ],
+                  "formulas": [
+                    {
+                      "formula": "q1"
+                    }
+                  ]
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

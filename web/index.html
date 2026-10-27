@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>AvionPulse – Cloud Operations</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="/static/css/app.css"/>
+  <script src="/static/js/config.js"></script>
+</head>
+<body>
+
+<!-- ═══════════════ LOGIN ═══════════════ -->
+<div id="login-page" class="page active">
+  <canvas id="radar-canvas"></canvas>
+  <div class="grid-overlay"></div>
+  <div class="login-wrap">
+    <div class="login-left">
+      <div class="login-brand">
+        <span class="pulse-logo">✈</span>
+        <div>
+          <div class="brand-name">AvionPulse</div>
+          <div class="brand-sub">Cloud Operations Platform · AvionDash Suite · v3</div>
+        </div>
+      </div>
+      <div class="stat-grid">
+        <div class="stat-card"><div class="stat-val" id="ls-flights">—</div><div class="stat-lbl">Tracked Flights</div></div>
+        <div class="stat-card"><div class="stat-val" id="ls-airborne">—</div><div class="stat-lbl">Airborne Now</div></div>
+        <div class="stat-card"><div class="stat-val" id="ls-aircraft">—</div><div class="stat-lbl">Fleet Size</div></div>
+        <div class="stat-card"><div class="stat-val" id="ls-delayed">—</div><div class="stat-lbl">Delayed</div></div>
+      </div>
+      <div class="login-blurb">
+        Traces, logs, metrics and chaos faults from an<br>
+        always-on serverless core and an on-demand<br>
+        EC2 / RDS tier. Purpose-built for Datadog.
+      </div>
+      <div class="badge-row">
+        <span class="badge b-cf">CloudFront</span>
+        <span class="badge b-s3">S3</span>
+        <span class="badge b-apigw">API Gateway</span>
+        <span class="badge b-lambda">Lambda</span>
+        <span class="badge b-ddb">DynamoDB</span>
+        <span class="badge b-sqs">SQS</span>
+        <span class="badge b-eb">EventBridge</span>
+        <span class="badge b-sns">SNS</span>
+        <span class="badge b-sfn">Step Functions</span>
+        <span class="badge b-kms">KMS</span>
+        <span class="badge b-ec2">EC2 · ALB · RDS</span>
+        <span class="badge b-dd">Datadog</span>
+      </div>
+    </div>
+    <div class="login-right">
+      <form class="login-card" onsubmit="doLogin(event)">
+        <div class="login-head">
+          <div class="login-icon">⚡</div>
+          <h2>Flight Deck Access</h2>
+          <p>Sign in to the operations centre</p>
+        </div>
+        <div id="login-error" class="alert-error" hidden></div>
+        <div class="form-group">
+          <label for="inp-user">Username</label>
+          <input id="inp-user" type="text" placeholder="admin" autocomplete="username" required/>
+        </div>
+        <div class="form-group">
+          <label for="inp-pass">Password</label>
+          <input id="inp-pass" type="password" placeholder="••••••••" autocomplete="current-password" required/>
+        </div>
+        <button id="btn-login" class="btn-primary" type="submit">AUTHENTICATE</button>
+        <div class="login-demo">
+          Demo: <code>admin / aviondash123</code><br>
+          <code>operator / operator123</code> · <code>viewer / viewer123</code>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════ APP SHELL ═══════════════ -->
+<div id="app-page" class="page">
+  <nav id="sidebar">
+    <div class="sidebar-brand">
+      <span class="pulse-logo sm">✈</span><span class="brand-name">AvionPulse</span>
+      <button class="nav-close" onclick="toggleNav(false)" aria-label="Close menu">✕</button>
+    </div>
+    <div class="nav-label">OPERATIONS</div>
+    <a class="nav-item" data-view="dashboard" href="#dashboard"><span class="ni">◉</span>Dashboard</a>
+    <a class="nav-item" data-view="flights"   href="#flights"><span class="ni">✈</span>Flights</a>
+    <a class="nav-item" data-view="fleet"     href="#fleet"><span class="ni">⚙</span>Fleet</a>
+    <a class="nav-item" data-view="airports"  href="#airports"><span class="ni">⌖</span>Airports</a>
+    <a class="nav-item" data-view="events"    href="#events"><span class="ni">⇄</span>Ops Pipeline</a>
+    <a class="nav-item" data-view="notams"    href="#notams"><span class="ni">⚑</span>NOTAMs</a>
+    <a class="nav-item" data-view="integrations" href="#integrations"><span class="ni">⧉</span>Integrations</a>
+    <a class="nav-item" data-view="gates"     href="#gates"><span class="ni">▦</span>Gates <span class="nav-tag" id="nav-classic-tag">CLASSIC</span></a>
+    <div class="nav-label">PLATFORM</div>
+    <a class="nav-item" data-view="aws" href="#aws"><span class="ni">☁</span>AWS Resources</a>
+    <a class="nav-item" data-view="architecture" href="#architecture"><span class="ni">⌬</span>Architecture &amp; Cost</a>
+    <a class="nav-item nav-chaos" data-view="chaos" href="#chaos"><span class="ni">⚡</span>Chaos Control</a>
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <span>👤</span><span id="sb-user">—</span>
+        <span id="sb-role" class="role-badge">—</span>
+      </div>
+      <div class="env-chip" id="sb-env">—</div>
+      <button class="btn-logout" onclick="doLogout()">Sign Out</button>
+    </div>
+  </nav>
+  <div id="nav-scrim" onclick="toggleNav(false)"></div>
+
+  <main id="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="nav-open" onclick="toggleNav(true)" aria-label="Open menu">☰</button>
+        <span id="view-title" class="view-title">Dashboard</span>
+        <span id="clock" class="clock"></span>
+      </div>
+      <div class="topbar-right">
+        <span id="cold-ind" class="lat-ind" title="Last API call: duration / cold start">—</span>
+        <span id="fault-ind" class="fault-ind fault-off">ALL SYSTEMS NOMINAL</span>
+      </div>
+    </header>
+
+    <!-- DASHBOARD -->
+    <section id="view-dashboard" class="view">
+      <div id="dash-error" class="banner banner-err" hidden></div>
+      <div class="kpi-row">
+        <div class="kpi-card"><div class="kpi-val" id="k-total">—</div><div class="kpi-lbl">Flights</div></div>
+        <div class="kpi-card kpi-green"><div class="kpi-val" id="k-airborne">—</div><div class="kpi-lbl">Airborne</div></div>
+        <div class="kpi-card kpi-blue"><div class="kpi-val" id="k-pax">—</div><div class="kpi-lbl">Pax Airborne</div></div>
+        <div class="kpi-card kpi-yellow"><div class="kpi-val" id="k-delayed">—</div><div class="kpi-lbl">Delayed</div></div>
+        <div class="kpi-card kpi-red"><div class="kpi-val" id="k-canc">—</div><div class="kpi-lbl">Cancelled</div></div>
+        <div class="kpi-card"><div class="kpi-val" id="k-ontime">—</div><div class="kpi-lbl">On-Time</div></div>
+      </div>
+      <div class="panel-row">
+        <div class="panel grow2">
+          <div class="panel-hdr">Live Flight Map <span class="panel-sub" id="map-age"></span></div>
+          <div class="panel-body"><svg id="flight-map" viewBox="0 0 900 440" xmlns="http://www.w3.org/2000/svg"></svg></div>
+        </div>
+        <div class="panel grow1">
+          <div class="panel-hdr">Serverless Health</div>
+          <div class="panel-body">
+            <div class="h-row"><span>Edge</span><span class="h-val ok">CloudFront ✓</span></div>
+            <div class="h-row"><span>API</span><span class="h-val" id="h-api">—</span></div>
+            <div class="h-row"><span>Lambda container</span><span class="h-val" id="h-cold">—</span></div>
+            <div class="h-row"><span>DynamoDB read</span><span class="h-val" id="h-ddb">—</span></div>
+            <div class="h-row"><span>Data freshness</span><span class="h-val" id="h-age">—</span></div>
+            <div class="h-row"><span>Fleet utilisation</span><span class="h-val" id="h-util">—</span></div>
+            <div class="h-row"><span>Active faults</span><span class="h-val" id="h-faults">—</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="panel-row">
+        <div class="panel grow1">
+          <div class="panel-hdr">Busiest Origins</div>
+          <div class="panel-body" id="busiest-panel"><div class="muted">—</div></div>
+        </div>
+        <div class="panel grow2">
+          <div class="panel-hdr">Station Weather <span class="panel-sub">synthetic METAR</span></div>
+          <div class="panel-body" id="weather-panel"><div class="muted">Loading…</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- FLIGHTS -->
+    <section id="view-flights" class="view">
+      <div class="toolbar">
+        <select id="filter-status" onchange="loadFlights()" aria-label="Filter by status">
+          <option value="">All statuses</option>
+          <option value="en_route">En route</option>
+          <option value="departed">Departed</option>
+          <option value="boarding">Boarding</option>
+          <option value="scheduled">Scheduled</option>
+          <option value="delayed">Delayed</option>
+          <option value="landed">Landed</option>
+          <option value="cancelled">Cancelled</option>
+        </select>
+        <button class="btn-sec" onclick="loadFlights()">↻ Refresh</button>
+        <span class="toolbar-note" id="flights-note"></span>
+      </div>
+      <div class="tbl-wrap">
+        <table class="dtbl">
+          <thead><tr><th>Flight</th><th>Route</th><th>Aircraft</th><th>Status</th><th>Departure (UTC)</th><th>Gate</th><th>Altitude</th><th>Progress</th><th>Pax</th><th>Delay</th></tr></thead>
+          <tbody id="flights-body"><tr><td colspan="10" class="loading">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- FLEET -->
+    <section id="view-fleet" class="view">
+      <div class="toolbar">
+        <select id="filter-ac" onchange="loadFleet()" aria-label="Filter by status">
+          <option value="">All statuses</option>
+          <option value="active">Active</option>
+          <option value="maintenance">Maintenance</option>
+        </select>
+        <button class="btn-sec" onclick="loadFleet()">↻ Refresh</button>
+      </div>
+      <div class="tbl-wrap">
+        <table class="dtbl">
+          <thead><tr><th>Tail</th><th>Model</th><th>Manufacturer</th><th>Seats</th><th>Range nm</th><th>Engine</th><th>Year</th><th>Status</th><th>Hours</th></tr></thead>
+          <tbody id="fleet-body"><tr><td colspan="9" class="loading">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- AIRPORTS -->
+    <section id="view-airports" class="view">
+      <div class="toolbar"><button class="btn-sec" onclick="loadAirports()">↻ Refresh</button></div>
+      <div class="tbl-wrap">
+        <table class="dtbl">
+          <thead><tr><th>IATA</th><th>ICAO</th><th>Name</th><th>City</th><th>Country</th><th>Lat</th><th>Lon</th><th>Elevation</th><th>Runways</th></tr></thead>
+          <tbody id="airports-body"><tr><td colspan="9" class="loading">Loading…</td></tr></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- OPS PIPELINE (SQS) -->
+    <section id="view-events" class="view">
+      <div class="pipeline">
+        <div class="pipe-node">Browser</div><div class="pipe-arrow">→</div>
+        <div class="pipe-node">API Lambda</div><div class="pipe-arrow">→</div>
+        <div class="pipe-node pipe-sqs">SQS<br><small id="pq-depth">—</small></div><div class="pipe-arrow">→</div>
+        <div class="pipe-node">Worker Lambda</div><div class="pipe-arrow">→</div>
+        <div class="pipe-node pipe-ddb">DynamoDB</div>
+        <div class="pipe-dlq">DLQ <span id="pq-dlq">—</span></div>
+      </div>
+      <div class="panel-row">
+        <div class="panel grow1">
+          <div class="panel-hdr">Raise Maintenance Request</div>
+          <form class="panel-body form-stack" onsubmit="submitEvent(event)">
+            <div class="form-group">
+              <label for="ev-tail">Aircraft</label>
+              <select id="ev-tail" required></select>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label for="ev-cat">Category</label>
+                <select id="ev-cat"><option>MX</option><option>OPS</option><option>LINE</option><option>ACARS</option></select>
+              </div>
+              <div class="form-group">
+                <label for="ev-sev">Severity</label>
+                <select id="ev-sev"><option value="info">info</option><option value="warning" selected>warning</option><option value="critical">critical</option></select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label for="ev-msg">Message</label>
+              <input id="ev-msg" type="text" maxlength="280" placeholder="Hydraulic quantity low — inspect before next sector" required/>
+            </div>
+            <button class="btn-primary" type="submit">ENQUEUE → SQS</button>
+            <div id="ev-result" class="form-note"></div>
+            <div class="form-note muted">Operator role or higher. The API returns 202 immediately; the worker writes the event a few seconds later.</div>
+          </form>
+        </div>
+        <div class="panel grow2">
+          <div class="panel-hdr">Processed Events <span class="panel-sub">written by the worker · 7-day TTL</span>
+            <button class="btn-sec btn-xs" onclick="loadEvents()">↻</button></div>
+          <div class="tbl-wrap">
+            <table class="dtbl">
+              <thead><tr><th>Processed (UTC)</th><th>Sev</th><th>Cat</th><th>Tail</th><th>Message</th><th>Queue lag</th><th>Source</th></tr></thead>
+              <tbody id="events-body"><tr><td colspan="7" class="loading">Loading…</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- NOTAMS (S3) -->
+    <section id="view-notams" class="view">
+      <div class="toolbar">
+        <button class="btn-sec" onclick="loadNotams()">↻ Refresh</button>
+        <span class="toolbar-note" id="notam-src"></span>
+      </div>
+      <div id="notam-grid" class="notam-grid"><div class="muted">Loading…</div></div>
+    </section>
+
+    <!-- INTEGRATIONS -->
+    <section id="view-integrations" class="view">
+      <div class="toolbar">
+        <button class="btn-sec" onclick="loadIntegrations()">↻ Refresh</button>
+        <span class="toolbar-note">Each channel is fed by the simulator every 5 minutes and consumed by λ processor.</span>
+      </div>
+      <div id="integ-grid" class="integ-grid"><div class="muted">Loading…</div></div>
+      <div id="integ-fail" class="banner banner-warn" hidden></div>
+    </section>
+
+    <!-- GATES (Classic tier) -->
+    <section id="view-gates" class="view">
+      <div class="pipeline">
+        <div class="pipe-node">λ api</div><div class="pipe-arrow">→</div>
+        <div class="pipe-node pipe-alb">ALB<br><small>X-AvionPulse-Key</small></div><div class="pipe-arrow">→</div>
+        <div class="pipe-node pipe-ec2">EC2 ASG<br><small id="gates-inst">—</small></div><div class="pipe-arrow">→</div>
+        <div class="pipe-node pipe-rds">RDS PostgreSQL<br><small id="gates-db">—</small></div>
+      </div>
+      <div class="toolbar">
+        <button class="btn-sec" onclick="loadGates()">↻ Refresh</button>
+        <span class="toolbar-note" id="gates-note"></span>
+      </div>
+      <div id="gates-grid" class="gate-grid"><div class="muted">Loading…</div></div>
+    </section>
+
+    <!-- AWS RESOURCES (drift) -->
+    <section id="view-aws" class="view">
+      <div class="toolbar">
+        <button class="btn-sec" onclick="loadAws()">↻ Re-check</button>
+        <span class="toolbar-note" id="drift-note">Reads every setting a chaos fault can change straight from the AWS APIs.</span>
+      </div>
+      <div class="panel">
+        <div class="panel-hdr">Configuration Drift <span class="panel-sub">current value vs. template baseline</span></div>
+        <div class="tbl-wrap">
+          <table class="dtbl drift-tbl">
+            <thead><tr><th>Status</th><th>Resource</th><th>Setting</th><th>Baseline</th><th>Current</th><th>Changed by fault</th></tr></thead>
+            <tbody id="drift-body"><tr><td colspan="6" class="loading">Loading…</td></tr></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ARCHITECTURE & COST -->
+    <section id="view-architecture" class="view">
+      <div class="panel">
+        <div class="panel-hdr">Core — Three-Tier Serverless Architecture</div>
+        <div class="panel-body arch-wrap">
+          <svg class="arch" viewBox="0 0 960 400" role="img" aria-label="Architecture diagram">
+            <defs>
+              <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+                <path d="M0,0 L10,5 L0,10 z" fill="#3d7fa6"/>
+              </marker>
+            </defs>
+            <g class="tier-band"><rect x="10" y="10" width="200" height="380" rx="8"/><text x="110" y="34">WEB TIER</text></g>
+            <g class="tier-band"><rect x="230" y="10" width="300" height="380" rx="8"/><text x="380" y="34">APP TIER</text></g>
+            <g class="tier-band"><rect x="550" y="10" width="400" height="380" rx="8"/><text x="750" y="34">DATA &amp; ASYNC TIER</text></g>
+
+            <g class="node n-cf"><rect x="35" y="70" width="150" height="56" rx="6"/><text x="110" y="94">CloudFront</text><text class="sub" x="110" y="112">edge · HTTPS · cache</text></g>
+            <g class="node n-s3"><rect x="35" y="200" width="150" height="56" rx="6"/><text x="110" y="224">S3 bucket</text><text class="sub" x="110" y="242">SPA + data/notams.json</text></g>
+            <g class="node n-apigw"><rect x="255" y="70" width="250" height="56" rx="6"/><text x="380" y="94">API Gateway (HTTP API)</text><text class="sub" x="380" y="112">/api/* · stage throttle</text></g>
+            <g class="node n-lambda"><rect x="255" y="170" width="250" height="56" rx="6"/><text x="380" y="194">λ api</text><text class="sub" x="380" y="212">routes · auth · chaos engine</text></g>
+            <g class="node n-lambda"><rect x="255" y="300" width="115" height="56" rx="6"/><text x="312" y="324">λ simulator</text><text class="sub" x="312" y="342">every 5 min</text></g>
+            <g class="node n-eb"><rect x="390" y="300" width="115" height="56" rx="6"/><text x="447" y="324">EventBridge</text><text class="sub" x="447" y="342">schedule</text></g>
+            <g class="node n-ddb"><rect x="580" y="70" width="170" height="56" rx="6"/><text x="665" y="94">DynamoDB</text><text class="sub" x="665" y="112">single table · 5 RCU/WCU</text></g>
+            <g class="node n-sqs"><rect x="580" y="200" width="170" height="56" rx="6"/><text x="665" y="224">SQS events</text><text class="sub" x="665" y="242">redrive ×3</text></g>
+            <g class="node n-dlq"><rect x="580" y="310" width="170" height="46" rx="6"/><text x="665" y="338">SQS DLQ</text></g>
+            <g class="node n-lambda"><rect x="775" y="200" width="150" height="56" rx="6"/><text x="850" y="224">λ worker</text><text class="sub" x="850" y="242">batch · partial failures</text></g>
+            <g class="node n-dd"><rect x="775" y="70" width="150" height="56" rx="6"/><text x="850" y="94">Datadog</text><text class="sub" x="850" y="112">Lambda Extension</text></g>
+
+            <g class="edge">
+              <path d="M185,98 L255,98" marker-end="url(#ah)"/>
+              <path d="M110,126 L110,200" marker-end="url(#ah)"/>
+              <path d="M380,126 L380,170" marker-end="url(#ah)"/>
+              <path d="M505,190 C540,190 545,98 580,98" marker-end="url(#ah)"/>
+              <path d="M505,208 C540,208 545,228 580,228" marker-end="url(#ah)"/>
+              <path d="M750,228 L775,228" marker-end="url(#ah)"/>
+              <path d="M850,200 C850,150 760,140 750,118" marker-end="url(#ah)"/>
+              <path d="M665,256 L665,310" marker-end="url(#ah)"/>
+              <path d="M390,328 L370,328" marker-end="url(#ah)"/>
+              <path d="M340,300 C360,250 540,140 580,112" marker-end="url(#ah)"/>
+              <path d="M370,316 C470,300 540,250 580,240" marker-end="url(#ah)"/>
+              <path d="M185,228 C230,228 230,226 255,210" class="dashed" marker-end="url(#ah)"/>
+            </g>
+            <g class="edge-dd"><path d="M505,180 C620,150 700,60 775,88" marker-end="url(#ah)"/></g>
+          </svg>
+          <div class="arch-legend"><span class="lg lg-solid"></span>request / data flow <span class="lg lg-dash"></span>S3 GetObject (NOTAMs) <span class="lg lg-dd"></span>traces · logs · metrics</div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-hdr">v3 — Integration Tier &amp; On-Demand Classic Tier</div>
+        <div class="panel-body arch-wrap">
+          <svg class="arch" viewBox="0 0 960 300" role="img" aria-label="Integration and Classic tier diagram">
+            <g class="tier-band"><rect x="10" y="10" width="560" height="280" rx="8"/><text x="290" y="34">INTEGRATION TIER (core stack, always on)</text></g>
+            <g class="tier-band"><rect x="590" y="10" width="360" height="280" rx="8"/><text x="770" y="34">CLASSIC TIER (second stack, on demand)</text></g>
+            <g class="node n-lambda"><rect x="30" y="120" width="140" height="56" rx="6"/><text x="100" y="144">λ simulator</text><text class="sub" x="100" y="162">every 5 min</text></g>
+            <g class="node n-ddb"><rect x="210" y="50" width="150" height="46" rx="6"/><text x="285" y="78">DynamoDB Stream</text></g>
+            <g class="node n-eb"><rect x="210" y="104" width="150" height="46" rx="6"/><text x="285" y="132">EventBridge bus</text></g>
+            <g class="node n-sqs"><rect x="210" y="158" width="150" height="46" rx="6"/><text x="285" y="186">SNS crew alerts</text></g>
+            <g class="node n-s3"><rect x="210" y="212" width="150" height="46" rx="6"/><text x="285" y="240">S3 recorder</text></g>
+            <g class="node n-apigw"><rect x="210" y="262" width="150" height="22" rx="6"/><text class="sub" x="285" y="277">Step Functions Express</text></g>
+            <g class="node n-lambda"><rect x="400" y="120" width="150" height="56" rx="6"/><text x="475" y="144">λ processor</text><text class="sub" x="475" y="162">INTEG/&lt;channel&gt;</text></g>
+            <g class="node n-cf"><rect x="615" y="60" width="150" height="46" rx="6"/><text x="690" y="88">ALB</text></g>
+            <g class="node n-lambda"><rect x="615" y="130" width="150" height="56" rx="6"/><text x="690" y="154">EC2 ASG</text><text class="sub" x="690" y="172">gate service + Agent</text></g>
+            <g class="node n-ddb"><rect x="615" y="210" width="150" height="56" rx="6"/><text x="690" y="234">RDS PostgreSQL</text><text class="sub" x="690" y="252">Multi-AZ on Full</text></g>
+            <g class="node n-dd"><rect x="790" y="60" width="140" height="46" rx="6"/><text x="860" y="88">λ api /api/gates</text></g>
+            <g class="node n-eb"><rect x="790" y="130" width="140" height="56" rx="6"/><text x="860" y="154">AWS FIS</text><text class="sub" x="860" y="172">CPU · latency · AZ</text></g>
+            <g class="node n-dlq"><rect x="790" y="210" width="140" height="56" rx="6"/><text x="860" y="234">Scheduler</text><text class="sub" x="860" y="252">auto-shutdown</text></g>
+            <g class="edge">
+              <path d="M170,140 L210,73" marker-end="url(#ah)"/><path d="M170,145 L210,127" marker-end="url(#ah)"/>
+              <path d="M170,152 L210,181" marker-end="url(#ah)"/><path d="M170,160 L210,235" marker-end="url(#ah)"/>
+              <path d="M170,170 L210,272" marker-end="url(#ah)"/>
+              <path d="M360,73 L400,135" marker-end="url(#ah)"/><path d="M360,127 L400,142" marker-end="url(#ah)"/>
+              <path d="M360,181 L400,155" marker-end="url(#ah)"/><path d="M360,235 L400,165" marker-end="url(#ah)"/>
+              <path d="M360,272 L400,172" marker-end="url(#ah)"/>
+              <path d="M790,83 L765,83" marker-end="url(#ah)"/><path d="M690,106 L690,130" marker-end="url(#ah)"/>
+              <path d="M690,186 L690,210" marker-end="url(#ah)"/><path d="M790,158 L765,158" class="dashed" marker-end="url(#ah)"/>
+            </g>
+          </svg>
+          <div class="arch-legend">The Classic stack is created by <code>cloudformation:CreateStack</code> from the Chaos page and deleted by a one-time EventBridge Scheduler job at its expiry.</div>
+        </div>
+      </div>
+      <div class="panel-row">
+        <div class="panel grow1">
+          <div class="panel-hdr">This Lambda Container <button class="btn-sec btn-xs" onclick="loadArchitecture()">↻</button></div>
+          <div class="panel-body" id="sys-panel"><div class="muted">Loading…</div></div>
+        </div>
+        <div class="panel grow2">
+          <div class="panel-hdr">Cost Model <span class="panel-sub">us-east-1 list prices · demo traffic ≈ 100k API calls/month · verify in the AWS Pricing Calculator</span></div>
+          <div class="tbl-wrap">
+            <table class="dtbl cost-tbl">
+              <thead><tr><th>Service</th><th>What runs</th><th>Free allowance</th><th>Demo usage</th><th>Est. / month</th></tr></thead>
+              <tbody>
+                <tr><td>CloudFront</td><td>Edge, HTTPS, SPA cache</td><td>1 TB + 10M req (always free)</td><td>&lt; 1 GB, ~150k req</td><td class="c">$0.00</td></tr>
+                <tr><td>S3</td><td>~1 MB of static files</td><td>5 GB (12 mo.)</td><td>1 MB, CloudFront-cached</td><td class="c">$0.00–0.01</td></tr>
+                <tr><td>API Gateway HTTP</td><td>/api/* routes</td><td>1M req (12 mo.)</td><td>~100k req × $1.00/M</td><td class="c">$0.00–0.10</td></tr>
+                <tr><td>Lambda (arm64)</td><td>api · worker · simulator · seed</td><td>1M req + 400k GB-s (always free)</td><td>~120k req · ~8k GB-s</td><td class="c">$0.00</td></tr>
+                <tr><td>DynamoDB</td><td>1 table, 5 RCU / 5 WCU</td><td>25 RCU + 25 WCU + 25 GB (always free)</td><td>&lt; 1 MB</td><td class="c">$0.00</td></tr>
+                <tr><td>SQS</td><td>events queue + DLQ</td><td>1M req (always free)</td><td>~650k (idle trigger polling)</td><td class="c">$0.00</td></tr>
+                <tr><td>EventBridge</td><td>5-minute schedule</td><td>Scheduled rules are free</td><td>8,640 runs</td><td class="c">$0.00</td></tr>
+                <tr><td>CloudWatch Logs</td><td>4 log groups, 3-day retention</td><td>5 GB ingest (always free)</td><td>~0.2 GB</td><td class="c">$0.00</td></tr>
+                <tr><td>SSM Parameter Store</td><td>Datadog API key + feature flags</td><td>Standard tier is free</td><td>2 parameters</td><td class="c">$0.00</td></tr>
+                <tr><td>KMS</td><td>1 customer-managed key (events queue)</td><td>—</td><td>$1/key + ~60k requests</td><td class="c">$1.00–1.20</td></tr>
+                <tr><td>EventBridge bus + rules</td><td>FlightStatusChanged, recorder, janitor</td><td>Scheduled rules free</td><td>~45k custom events</td><td class="c">$0.00–0.05</td></tr>
+                <tr><td>SNS</td><td>crew-alerts → λ processor</td><td>1M publishes (always free)</td><td>~9k</td><td class="c">$0.00</td></tr>
+                <tr><td>Step Functions Express</td><td>turnaround workflow</td><td>—</td><td>~9k executions, ~1 s each</td><td class="c">$0.01</td></tr>
+                <tr><td>S3 recorder bucket</td><td>1 snapshot / run, 1-day expiry</td><td>—</td><td>~9k PUTs</td><td class="c">$0.04</td></tr>
+                <tr><td>Lambda (janitor + processor)</td><td>every 2 min + event-driven</td><td>inside the always-free allowance</td><td>~60k req</td><td class="c">$0.00</td></tr>
+                <tr class="cost-total"><td colspan="4">Core stack, expected total (free tier active)</td><td class="c">≈ $1.10 – $1.50</td></tr>
+                <tr class="cost-total dim"><td colspan="4">Core stack, worst case, no free tier at all</td><td class="c">≈ $5</td></tr>
+                <tr class="cost-total classic-row"><td colspan="4">Classic tier, only while launched — Minimal (ALB, 1× t4g.micro, single-AZ RDS)</td><td class="c">≈ $0.07 / hour</td></tr>
+                <tr class="cost-total classic-row"><td colspan="4">Classic tier, only while launched — Full (ALB, 2× t4g.micro, Multi-AZ RDS)</td><td class="c">≈ $0.11 / hour</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CHAOS -->
+    <section id="view-chaos" class="view">
+      <div class="chaos-hdr">
+        <div class="chaos-title">
+          <span class="chaos-icon">⚡</span>
+          <div>
+            <h2>Chaos Control Centre</h2>
+            <p>Break real AWS resources and code paths to light up Datadog monitoring — serverless, AWS control plane, security, and the on-demand EC2 / RDS tier. Every fault auto-reverts when its TTL expires.</p>
+          </div>
+        </div>
+        <div class="chaos-actions">
+          <label class="ttl-pick">Auto-revert after
+            <select id="chaos-ttl">
+              <option value="5">5 min</option><option value="15">15 min</option>
+              <option value="30" selected>30 min</option><option value="60">60 min</option><option value="120">120 min</option>
+            </select>
+          </label>
+          <button class="btn-reset" onclick="resetAllFaults()">⬛ RESET ALL</button>
+        </div>
+      </div>
+      <div id="chaos-alert" class="chaos-alert" hidden></div>
+      <div id="chaos-readonly" class="banner banner-warn" hidden>Read-only: sign in as <code>admin</code> to inject faults.</div>
+      <div id="classic-card" class="classic-card"></div>
+      <div id="chaos-tiers"></div>
+    </section>
+  </main>
+</div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
