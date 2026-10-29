@@ -279,6 +279,14 @@ Resources:
           Compress: true
           CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6   # Managed-CachingOptimized
         CacheBehaviors:
+          # Public status page: rendered by the api function, never cached.
+          - PathPattern: /status
+            TargetOriginId: api
+            ViewerProtocolPolicy: redirect-to-https
+            AllowedMethods: [GET, HEAD]
+            Compress: true
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad          # Managed-CachingDisabled
+            OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac  # Managed-AllViewerExceptHostHeader
           - PathPattern: /api/*
             TargetOriginId: api
             ViewerProtocolPolicy: https-only
@@ -1165,6 +1173,14 @@ Resources:
       RouteKey: ANY /api/{proxy+}
       Target: !Sub integrations/${ApiIntegration}
 
+  # Public status page (HTML). Data integration on purpose: api_integration_broken takes it down too.
+  StatusRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref HttpApi
+      RouteKey: GET /status
+      Target: !Sub integrations/${ApiIntegration}
+
   ChaosRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
@@ -1195,7 +1211,7 @@ Resources:
 
   ApiStage:
     Type: AWS::ApiGatewayV2::Stage
-    DependsOn: [ApiRoute, ChaosRoute, AuthRoute, ClassicRoute, AwsRoute]
+    DependsOn: [ApiRoute, StatusRoute, ChaosRoute, AuthRoute, ClassicRoute, AwsRoute]
     Properties:
       ApiId: !Ref HttpApi
       StageName: $default
@@ -1553,6 +1569,9 @@ Outputs:
   SiteUrl:
     Description: Open this in a browser
     Value: !Sub https://${Distribution.DomainName}
+  StatusPageUrl:
+    Description: Public status page (no login) — target for the HTTP check and Synthetic API test
+    Value: !Sub https://${Distribution.DomainName}/status
   DistributionId:
     Value: !Ref Distribution
   BucketName:

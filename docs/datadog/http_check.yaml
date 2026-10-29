@@ -1,0 +1,38 @@
+## AvionPulse status page — Datadog Agent HTTP check (network check)
+##
+## Copy to the Agent's conf.d/http_check.d/conf.yaml (or mount it there in a container),
+## replace dxxxxxxxxxxxx.cloudfront.net with your SiteUrl host, then restart the Agent.
+## Full walkthrough: docs/DATADOG_SETUP.md §10.2
+init_config:
+
+instances:
+  # 1. Is the status page up? (HTTP 200 + the page title). The status_page_error fault makes this CRITICAL.
+  - name: avionpulse-status-page
+    url: https://dxxxxxxxxxxxx.cloudfront.net/status
+    method: GET
+    timeout: 5
+    http_response_status_code: "200"
+    content_match: "AvionPulse Status"
+    check_certificate_expiration: true
+    days_warning: 21
+    days_critical: 7
+    min_collection_interval: 30
+    tags:
+      - app:avionpulse
+      - env:demo
+      - check:status-page
+
+  # 2. Is everything on it green? Matches the JSON only when overall_status is operational,
+  #    so a degraded or failing component also turns this check CRITICAL.
+  - name: avionpulse-status-overall
+    url: https://dxxxxxxxxxxxx.cloudfront.net/api/status
+    method: GET
+    timeout: 5
+    http_response_status_code: "200"
+    content_match: '"overall_status": "operational"'
+    check_certificate_expiration: false
+    min_collection_interval: 60
+    tags:
+      - app:avionpulse
+      - env:demo
+      - check:status-overall

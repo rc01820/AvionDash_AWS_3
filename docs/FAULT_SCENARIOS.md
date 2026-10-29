@@ -1,6 +1,6 @@
 # AvionPulse v3 — Chaos Fault Scenarios
 
-The Chaos Control page (`#chaos`, admin only) has **49 faults in 11 tiers** (46 individual faults + 3 composites).
+The Chaos Control page (`#chaos`, admin only) has **50 faults in 11 tiers** (47 individual faults + 3 composites).
 v2's 23 faults are unchanged; v3 adds the **AWS control plane**, **Security & IAM**, **Integration**,
 **Classic tier** and **AWS FIS** tiers. Fault state is a single DynamoDB item (`CONFIG / FAULTS`) shared by
 every Lambda (and read by the Classic EC2 instances), cached for 3 seconds.
@@ -27,6 +27,7 @@ every Lambda (and read by the Classic EC2 instances), cached for 3 seconds.
 | `latency_spike` | 2–6 s sleep on every request. | `aws.apigateway.integration_latency`, Lambda duration, APM p95 | `avg(last_5m):p95:trace.aws.lambda{service:avionpulse} > 2` |
 | `random_500s` | 35% of requests raise an **unhandled** exception → Lambda Error, API Gateway bare 500. | `aws.lambda.errors`, APM error rate, Error Tracking issue | SLO burn-rate alert on `avionpulse` availability |
 | `health_check_fail` | `/api/health` returns 503; everything else is fine. | Synthetics API test fails | Synthetics test on `/api/health` |
+| `status_page_error` | The **public status page** (`/status`, no login) and its JSON (`/api/status`) return **500**. The app keeps working; only status-page probes notice. | Agent HTTP check `http.can_connect` CRITICAL; Synthetics API test fails; log `[FAULT] status_page_error` | HTTP check service-check monitor + Synthetic API test on `/status` ([DATADOG_SETUP.md §10](DATADOG_SETUP.md#10-status-page-http-check-and-synthetics)) |
 
 ## Compute tier — Lambda
 
@@ -157,3 +158,7 @@ Switching it off calls `fis:StopExperiment`. Experiments end on their own after 
    100%, the Gates page times out, and APM shows the postgres connect timeouts.
 10. **"Lose an AZ"** — launch Classic **Full**, then `fis_az_outage`. Watch healthy hosts halve, RDS
     fail over and the service recover. Run it next to the Datadog AWS Health / RDS events stream.
+11. **"Is the status page lying?"** — Status Page 500 on. The app works for signed-in users, and
+    the browser test as `viewer` stays green, but the public status page is down. The Agent HTTP
+    check alerts in about a minute and the Synthetic API test on its next run. Show which probe
+    noticed first, and from where.

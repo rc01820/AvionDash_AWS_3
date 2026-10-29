@@ -121,6 +121,7 @@ function doLogout() {
   currentUser = null;
   localStorage.removeItem('avp_token');
   clearInterval(refreshTimer);
+  if (document.body.classList.contains('role-viewer')) { location.replace('/'); return; }  // restore the full shell
   $('app-page').classList.remove('active');
   $('login-page').classList.add('active');
   loadLoginStats();
@@ -169,6 +170,11 @@ const VIEWS = {
 function enterApp() {
   $('login-page').classList.remove('active');
   $('app-page').classList.add('active');
+  document.body.classList.toggle('role-viewer', isViewer());
+  // Viewers: take the platform links out of the page entirely (not just hidden), so nothing about
+  // AWS resources, cost or chaos is in the DOM. Sign-out reloads the page, which restores them.
+  if (isViewer()) document.querySelectorAll('.nav-platform, .platform-only, #fault-ind').forEach(el => el.remove());
+  if (isViewer() && PLATFORM_VIEWS.includes(location.hash.replace('#', ''))) history.replaceState(null, '', '#dashboard');
   setText('sb-user', currentUser.username);
   setText('sb-role', currentUser.role.toUpperCase());
   setText('sb-env', `env:${CFG.env || 'demo'} · v${CFG.version || '1.0.0'}`);
@@ -178,11 +184,20 @@ function enterApp() {
   refreshTimer = setInterval(refreshView, 30000);
 }
 
-function currentView() { const v = location.hash.replace('#', ''); return VIEWS[v] ? v : 'dashboard'; }
+// Viewers see the operations pages only; the platform pages (and their API routes) need operator or admin.
+const PLATFORM_VIEWS = ['aws', 'architecture', 'chaos'];
+const isViewer = () => currentUser?.role === 'viewer';
+
+function currentView() {
+  const v = location.hash.replace('#', '');
+  if (!VIEWS[v] || (isViewer() && PLATFORM_VIEWS.includes(v))) return 'dashboard';
+  return v;
+}
 
 function route() {
   if (!currentUser) return;
   const name = currentView();
+  if (location.hash && location.hash !== '#' + name) history.replaceState(null, '', '#' + name);
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === `view-${name}`));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.view === name));
   setText('view-title', VIEWS[name][0]);
@@ -383,8 +398,7 @@ async function loadEvents() {
       sel.innerHTML = rows.map(a => `<option value="${esc(a.tail_number)}">${esc(a.tail_number)} · ${esc(a.model)}</option>`).join('');
     }).catch(() => {});
   }
-  api('/system').then(s => {
-    const q = s.queues || {};
+  api('/events/queue').then(q => {
     setText('pq-depth', q.error ? q.error : `${q.queue_visible ?? '—'} visible · ${q.queue_in_flight ?? 0} in flight`);
     setText('pq-dlq', q.dlq_visible ?? '—');
     document.querySelector('.pipe-dlq').classList.toggle('has', (q.dlq_visible || 0) > 0);
@@ -461,6 +475,7 @@ async function loadArchitecture() {
 //  CHAOS
 // ═══════════════════════════════════════════════════════════
 async function refreshFaultIndicator() {
+  if (isViewer()) return;  // chaos and Classic state are platform information
   try {
     const st = await api('/chaos/status');
     faultState = st.faults || {};
@@ -758,7 +773,9 @@ async function loadGates() {
   } catch (e) {
     setText('gates-inst', '—'); setText('gates-db', '—'); setText('gates-note', '');
     grid.innerHTML = e.code === 'ClassicOffline'
-      ? `<div class="err-card info">The Classic tier is offline.<br><span class="muted">Launch it from <a href="#chaos">Chaos Control</a> — about 12–15 minutes, ≈ $0.07–0.11 / hour, deletes itself when its time is up.</span></div>`
+      ? `<div class="err-card info">The gate-assignment service (Classic tier) is offline.<br><span class="muted">${isViewer()
+          ? 'It runs on demand. Ask an operator or admin to launch it.'
+          : 'Launch it from <a href="#chaos">Chaos Control</a> — about 12–15 minutes, ≈ $0.07–0.11 / hour, deletes itself when its time is up.'}</span></div>`
       : `<div class="err-card">✗ Gate service unavailable<br>${esc(errText(e))}<br><span class="muted">Path: λ api → ALB → EC2 → RDS. Check the Classic and FIS faults on the Chaos page.</span></div>`;
   }
 }

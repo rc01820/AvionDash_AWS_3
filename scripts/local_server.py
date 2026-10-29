@@ -122,7 +122,9 @@ class Handler(BaseHTTPRequestHandler):
             resp = api.handler(event, FakeContext())
         except chaos.UnhandledFault:
             return self._send(500, {"message": "Internal Server Error"})
-        self._send(resp["statusCode"], resp["body"].encode(), resp.get("headers"))
+        headers = resp.get("headers") or {}
+        self._send(resp["statusCode"], resp["body"].encode(), headers,
+                   ctype=headers.get("content-type", "application/json"))
 
     def _static(self):
         path = urlsplit(self.path).path
@@ -137,7 +139,9 @@ class Handler(BaseHTTPRequestHandler):
                    mimetypes.guess_type(full)[0] or "application/octet-stream")
 
     def do_GET(self):
-        self._api() if self.path.startswith("/api/") else self._static()
+        # /status is rendered by the api function (CloudFront sends it to API Gateway in AWS).
+        is_api = self.path.startswith("/api/") or urlsplit(self.path).path in ("/status", "/status/")
+        self._api() if is_api else self._static()
 
     def do_POST(self):
         self._api() if self.path.startswith("/api/") else self._send(405, b"", ctype="text/plain")
