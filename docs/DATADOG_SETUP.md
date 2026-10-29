@@ -8,7 +8,7 @@ application **and the AWS infrastructure under it**.
 3. [RUM](#3-rum-optional) (optional)
 4. [Reference: names, tags, metrics and log lines](#4-reference-names-tags-metrics-log-lines)
 5. [Creating monitors — the common steps](#5-creating-monitors--the-common-steps)
-6. [One monitor per fault](#6-one-monitor-per-fault) — **all 49 chaos faults**, with exact queries and test steps
+6. [One monitor per fault](#6-one-monitor-per-fault) — **all 50 chaos faults**, with exact queries and test steps
    * 6.1–6.6 the v2 serverless faults · 6.7 before the v3 monitors · 6.8 AWS control plane ·
      6.9 Security & IAM · 6.10 Integration · 6.11 v3 composites · 6.12 Classic tier · 6.13 AWS FIS ·
      6.14 summary table
@@ -16,6 +16,9 @@ application **and the AWS infrastructure under it**.
 8. [Verifying everything end to end](#8-verifying-everything-end-to-end)
 9. [v3: AWS infrastructure monitoring](#9-v3-aws-infrastructure-monitoring) — integration scope, CloudTrail,
    Cloud SIEM, chaos events, Classic tier Agent
+10. [Status page, HTTP check and Synthetics](#10-status-page-http-check-and-synthetics) — the public
+    status page, an Agent HTTP check (network check), a Synthetic API test, and a Synthetic browser
+    test signed in as the restricted `viewer` user
 
 AvionPulse runs without Datadog (and entirely without AWS in [local mode](LOCAL_MODE.md), which has
 no Datadog signals at all). Everything below assumes you deployed **with** a Datadog API key.
@@ -312,6 +315,17 @@ the monitor alerts, then switch the fault off and confirm it recovers.
   (`UnhandledFault: FlightBoardRenderError…`). Turn on *Notify on new issues* for `service:avionpulse`.
 * **Runbook:** Error Tracking → open the newest issue → the stack trace names the route.
 * **Test:** fault on, refresh the Flights page about 20 times. Alerts in about 2–5 min.
+
+#### `status_page_error` — Status page 500
+The public status page (`/status`, no login) returns HTTP 500. It gets three outside-in checks,
+all set up step by step in **[§10](#10-status-page-http-check-and-synthetics)**:
+* **Agent HTTP check** (network check): `[AvionPulse] Status page down (HTTP check)`, a service-check
+  monitor on `http.can_connect` for `instance:avionpulse-status-page`. Alerts in ~1–2 min. [§10.2](#102-agent-http-check-network-check)
+* **Synthetic API test:** `[AvionPulse] Public status page`, `GET /status` asserting 200 +
+  `AvionPulse Status`, every 5 min. [§10.3](#103-synthetic-api-test-for-the-status-page)
+* **Log monitor** (no extra tooling): `service:avionpulse "[FAULT] status_page_error"` count `> 0` over 5 min.
+* **Runbook:** Chaos → Edge → *Status Page 500*, or check the API Lambda errors. The rest of the app is unaffected.
+* **Test:** fault on. The HTTP check alerts in ~1–2 min; the Synthetic test alerts on its next run (≤ 5 min).
 
 #### `health_check_fail` — Health check failure
 * **Type:** Synthetic Monitoring → **API test** (HTTP)
@@ -1030,13 +1044,14 @@ They only mean something while the tier is online.
   Compare with AWS Health events ([AWS_RUNBOOKS.md §1](AWS_RUNBOOKS.md#1-aws-health-events)).
 * **Test:** launch Classic **Full**, fault on. The failover takes 1–2 min, and the blackout lasts 5 min.
 
-### 6.14 Summary table (all 49 faults)
+### 6.14 Summary table (all 50 faults)
 
 | Fault | Monitor | Type | Typical time to alert |
 |---|---|---|---|
 | api_throttling | API Gateway throttling (429s) | Metric (+composite) | 10–20 min |
 | latency_spike | API latency p95 high | Metric | 2–5 min |
 | random_500s | API Lambda error rate | Metric | 2–5 min |
+| status_page_error | Status page down (HTTP check) + Public status page (Synthetic API) | Service check + Synthetic | 1–2 / ≤ 5 min |
 | health_check_fail | Health endpoint | Synthetic | ≤ 5 min |
 | lambda_timeout | Lambda timeouts | Metric | ~2 min |
 | lambda_oom | Lambda out of memory | Metric | ~2 min |
@@ -1139,6 +1154,8 @@ bottom in the same order as the architecture: business → edge → compute → 
 | App requests by status | Timeseries | `sum:avionpulse.api.requests{$env} by {status_class}.as_count()` | Stacked bars. Real time, unlike the CloudWatch widgets above |
 | API latency p95 | Timeseries | `p95:avionpulse.api.latency_ms{$env}` | Line; add a marker `y = 2000` labelled "SLO" |
 | CloudFront requests (optional) | Timeseries | `sum:aws.cloudfront.requests{app:avionpulse}.as_count()` | Only if the integration collects us-east-1 |
+| Status page reachable | Check Status | Check `http.can_connect`, tag `instance:avionpulse-status-page` | Needs the Agent HTTP check (§10.2) |
+| Status page response time | Timeseries | `avg:network.http.response_time{check:status-page} by {instance}` | Line, unit s; event overlay `sources:avionpulse-chaos` |
 
 **Group 3 — Compute (Lambda)**
 
@@ -1340,10 +1357,283 @@ Moved into §6 with full settings and test steps: [6.7](#67-before-you-set-up-th
 (prerequisites and the "config changed" monitor), [6.8](#68-aws-control-plane),
 [6.9](#69-security--iam), [6.10](#610-integration--eventbridge-bus--sns--step-functions--streams),
 [6.11](#611-v3-composites), [6.12](#612-classic-tier), [6.13](#613-aws-fis-experiments), and the
-summary in [6.14](#614-summary-table-all-49-faults).
+summary in [6.14](#614-summary-table-all-50-faults).
 
 ### 9.5 Dashboard additions
 
 The v3 widget groups (AWS infrastructure, Integrations, Classic tier) are in
 [§7](#7-the-avionpulse-health-dashboard): Groups 7–9 in Option B, and already included in the
 importable JSON.
+
+---
+
+## 10. Status page, HTTP check and Synthetics
+
+AvionPulse has a **public status page** that needs no login, and three outside-in checks watch it
+and the app: an Agent **HTTP check** (network check), a **Synthetic API test**, and a **Synthetic
+browser test** that signs in as the restricted `viewer` user.
+
+| Check | What it proves | Fails on | Section |
+|---|---|---|---|
+| Agent HTTP check | `/status` answers 200 with the right content, from wherever your Agent runs | `status_page_error`, outages, TLS/DNS problems; the second instance also fails when any component is degraded | [10.2](#102-agent-http-check-network-check) |
+| Synthetic API test | `/status` answers 200 fast, from Datadog's managed locations | `status_page_error`, `api_integration_broken`, `random_500s`, slow responses | [10.3](#103-synthetic-api-test-for-the-status-page) |
+| Synthetic browser test (viewer) | A real user can sign in and use the operations pages, and can't see the platform pages | Login, data pages, permission leaks | [10.4](#104-synthetic-browser-test-as-the-viewer-user) |
+
+### 10.1 The status page
+
+| | |
+|---|---|
+| **HTML** | `https://<site>/status`: server-rendered by the `api` Lambda (CloudFront routes `/status` to API Gateway, never cached), auto-refreshes every 60 s |
+| **JSON** | `https://<site>/api/status` → `{"service", "overall", "overall_status", "components": [...], "checked_at"}` |
+| **Login** | None. It's linked from the login page (*● System status*) |
+| **Components** | Web & API · Flight data (freshness of the simulator's writes) · Ops pipeline (DLQ empty?) · NOTAM service (S3 read) · Integrations (how many of the 5 channels are flowing) · Gate services (Classic tier: *Not deployed* / *Provisioning* / *Operational*) |
+| **States** | `operational`, `degraded`, `outage` per component; `overall_status` is the worst (*Not deployed* counts as operational) |
+| **HTTP status** | **200** whenever the page itself works, even if a component is down (the page *reports* problems); **500** when the page itself fails |
+| **Cost guard** | Results are cached for 15 s per Lambda container, so probes every 30 s cost a handful of DynamoDB reads |
+| **Privacy** | Only component health: no fault names, users, resource names or AWS account details |
+| **Fault** | `status_page_error` (Chaos → Edge tier) makes `/status` and `/api/status` return **500** |
+
+Try it:
+
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" https://<site>/status
+```
+```bash
+curl -s https://<site>/api/status
+```
+
+### 10.2 Agent HTTP check (network check)
+
+The Datadog Agent's **HTTP Check** integration (`http_check`) polls a URL from a host you choose,
+and reports a service check and response-time metrics. It needs a running Datadog Agent somewhere
+that can reach the internet. AvionPulse's core stack is serverless, so pick one of these:
+
+| Where | How |
+|---|---|
+| **Any machine with Docker** (simplest) | The container below |
+| An existing Agent host | Copy the config into its `conf.d/http_check.d/` and restart the Agent |
+| The Classic tier EC2 instances | Possible over SSM Session Manager, but they're deleted at teardown, so it's not suitable for a permanent check |
+
+**1. Prepare the config.** Copy [`docs/datadog/http_check.yaml`](datadog/http_check.yaml) and
+replace `dxxxxxxxxxxxx.cloudfront.net` with your `SiteUrl` host (both instances). Adjust `env:` if
+you don't use `demo`. It defines two instances:
+
+| Instance | URL | Passes when | Interval |
+|---|---|---|---|
+| `avionpulse-status-page` | `/status` | HTTP 200 **and** body contains `AvionPulse Status` | 30 s |
+| `avionpulse-status-overall` | `/api/status` | HTTP 200 **and** body contains `"overall_status": "operational"` | 60 s |
+
+**2. Run an Agent with it (Docker):**
+
+```bash
+docker run -d --name dd-agent-http --restart unless-stopped -e DD_API_KEY=<DD_API_KEY> -e DD_SITE=datadoghq.com -e DD_HOSTNAME=avionpulse-probe -v "$(pwd)/docs/datadog/http_check.yaml:/etc/datadog-agent/conf.d/http_check.d/conf.yaml:ro" gcr.io/datadoghq/agent:7
+```
+
+**3. Verify** (within a minute):
+
+```bash
+docker exec dd-agent-http agent check http_check
+```
+
+Expect `http.can_connect` **OK** for both instances. In Datadog, *Metrics Explorer* →
+`network.http.response_time{instance:avionpulse-status-page}` shows points every 30 s.
+
+**What it reports**
+
+| Name | Kind | Tags |
+|---|---|---|
+| `http.can_connect` | service check (OK / CRITICAL) | `instance`, `url`, plus your tags |
+| `http.ssl_cert` | service check (OK / WARNING / CRITICAL by days left) | `instance`, `url` |
+| `network.http.response_time` | metric, seconds | `instance`, `url` |
+| `network.http.can_connect` / `network.http.cant_connect` | metric, 1 / 0 | `instance`, `url` |
+| `http.ssl.days_left` | metric | `instance`, `url` |
+
+**Monitor A: status page reachable** (the headline monitor)
+* **Type:** *Monitors → New Monitor → **Service Check***
+* **Check:** `http.can_connect`. **Pick tags:** `instance:avionpulse-status-page`. **Reporting by:** `instance`, `url`
+* **Equivalent query:**
+  ```
+  "http.can_connect".over("instance:avionpulse-status-page").by("instance","url").last(3).count_by_status()
+  ```
+* **Alert conditions:** trigger after **2** consecutive failures, recover after **1** success
+  (≈ 1 min to alert at the 30 s interval).
+* **No data:** **Notify** after 5 minutes. If the probe Agent itself stops, you want to know.
+* **Name:** `[AvionPulse] Status page down (HTTP check)` · **Tags:** `app:avionpulse`, `fault:status_page_error`, `check:status-page` · **Priority:** P1
+* **Runbook:** `curl -i https://<site>/status`. A 500 page "status page is unavailable" means the
+  `status_page_error` fault or a Lambda error (check *API Lambda error rate*). A timeout or DNS
+  failure means CloudFront, network, or the probe host.
+* **Test:** Chaos → **Status Page 500** on (TTL 15 min). Alerts within ~1–2 min. Off → recovers on the next check.
+
+**Monitor B: something on the status page isn't green**
+* **Type:** Service Check, `http.can_connect`, `instance:avionpulse-status-overall`, 2 failures / 1 success
+* **Name:** `[AvionPulse] Status page reports a degraded component` · **Priority:** P3
+* **Runbook:** open `/status` to see which component; then the matching monitors in §6.
+* **Test:** `s3_missing_object` doesn't affect it (the status page reads the real NOTAM file).
+  Instead, try `stream_processor_poison` (Integrations goes degraded after ~15 min) or
+  `simulator_crash` (Flight data degrades after 15 min). `status_page_error` also fires this one.
+
+**Monitor C: status page slow**
+* **Type:** Metric → Threshold
+* **Query:**
+  ```
+  avg(last_5m):avg:network.http.response_time{instance:avionpulse-status-page} > 2
+  ```
+* **Thresholds:** Alert `> 2` s, Warning `> 1` s. **Name:** `[AvionPulse] Status page slow (HTTP check)`
+* **Test:** `latency_spike` adds 2–6 s to every request, including `/status`. Alerts in ~5 min.
+
+**Monitor D (optional): TLS certificate expiring**
+* **Type:** Service Check `http.ssl_cert`, `instance:avionpulse-status-page`. CloudFront's default
+  certificate renews automatically, so this is mainly useful once you put a custom domain in front.
+
+### 10.3 Synthetic API test for the status page
+
+Runs from Datadog's own locations, so it also catches problems your probe host can't see (or
+causes). Synthetic tests create their own monitor, so there's nothing extra to set up.
+
+**Option 1: in the UI**
+
+1. *Digital Experience → Synthetic Monitoring & Testing → New Test → **API Test** → **HTTP***.
+2. **Request:** `GET https://<site>/status`. *Advanced options*: timeout 10 s, follow redirects on.
+   Name the test `[AvionPulse] Public status page`. Tags: `app:avionpulse`, `env:demo`,
+   `fault:status_page_error`, `check:status-page`.
+3. Click **Send** to preview the response, then **assertions** (*New Assertion*):
+
+   | Type | Operator | Value |
+   |---|---|---|
+   | status code | is | `200` |
+   | response time | less than | `3000` ms |
+   | header `content-type` | contains | `text/html` |
+   | body | contains | `AvionPulse Status` |
+
+4. **Locations:** two managed locations near your users (e.g. *N. Virginia (AWS)* and *Ireland (AWS)*).
+   Each location is billed per run.
+5. **Frequency:** every **5 minutes**.
+6. **Alert conditions:** alert if the test fails for **0** minutes from **1 of N** locations; retry
+   **1** time after **30 s** before marking a location as failed.
+7. **Monitor:** name `[AvionPulse] Public status page`, priority **P1**, message from the template
+   in §5, plus the runbook line from Monitor A above, then **Create Test**.
+
+**Option 2: as code** with [`docs/datadog/synthetics-status-api.json`](datadog/synthetics-status-api.json).
+You need an **API key** and an **Application key** (*Organization Settings → Application Keys*).
+
+```bash
+SITE_HOST=dxxxxxxxxxxxx.cloudfront.net
+```
+```bash
+sed "s/<SITE_HOST>/$SITE_HOST/g" docs/datadog/synthetics-status-api.json > /tmp/avp-status-test.json
+```
+```bash
+curl -sS -X POST "https://api.datadoghq.com/api/v1/synthetics/tests/api" -H "DD-API-KEY: $DD_API_KEY" -H "DD-APPLICATION-KEY: $DD_APP_KEY" -H "Content-Type: application/json" -d @/tmp/avp-status-test.json
+```
+
+Use your site's API host (`api.datadoghq.eu`, `api.us5.datadoghq.com`…). The response contains
+the test's `public_id`. Edit the `locations` list to the ones you want. Verify it in the UI and
+click **Run Test Now**.
+
+**Optional second test (JSON health):** same steps with `GET https://<site>/api/status` and a
+JSON-path assertion `$.overall_status` *is* `operational`, frequency 15 min, priority P3. It's the
+Synthetics equivalent of HTTP check Monitor B.
+
+**Test it:** Chaos → **Status Page 500** on, then on the test page click **Run Test Now**. The
+status-code and body assertions fail, and the monitor alerts on the next scheduled run (≤ 5 min).
+Turn the fault off and run it again.
+
+### 10.4 Synthetic browser test as the viewer user
+
+A real browser signs in as `viewer`, walks through several operations pages, and checks that the
+**platform pages are not offered** to that role. Viewers can't reach AWS Resources, Architecture &
+Cost or Chaos Control, and the API refuses their requests with 403.
+
+**1. Store the viewer password as a secure global variable**
+
+*Synthetic Monitoring & Testing → Settings → **Global Variables** → New Global Variable*:
+
+| Field | Value |
+|---|---|
+| Name | `AVIONPULSE_VIEWER_PASSWORD` |
+| Type | Specify value |
+| Value | `viewer123` (the demo password; see [README → Users](../README.md#users-and-roles)) |
+| **Hide and obfuscate variable value** | **on** |
+| Tags | `app:avionpulse` |
+
+**2. Create the test.** *New Test → **Browser Test***:
+
+* **Starting URL:** `https://<site>/`
+* **Name:** `[AvionPulse] Viewer journey (browser)`
+* **Tags:** `app:avionpulse`, `env:demo`, `role:viewer`
+* **Browsers & devices:** Chrome, *Laptop Large* (add Firefox or a mobile size if you like; each multiplies the runs)
+* **Locations:** 1–2 managed locations
+* **Frequency:** every **15 minutes** (browser runs cost much more than API runs)
+* **Retry:** 1 time after 300 ms. **Alert:** if the test fails for **0** minutes from **1 of N** locations
+* **Variables:** *Use Global Variable* → `AVIONPULSE_VIEWER_PASSWORD`
+
+Click **Save & Edit Recording**. Datadog opens its recorder (it needs the Datadog test recorder
+Chrome extension). Record or add these steps. The selectors are stable IDs in `web/index.html`.
+If the recorder picks a different locator, edit the step → *User specified locator* → CSS.
+
+| # | Step type | Target (CSS) | Value / assertion |
+|---|---|---|---|
+| 1 | Assert element present | `#inp-user` | (login form loaded) |
+| 2 | **Assert page does not contain** | — | `aviondash123` (no demo passwords on the login page) |
+| 3 | Type text | `#inp-user` | `viewer` |
+| 4 | Type text | `#inp-pass` | `{{ AVIONPULSE_VIEWER_PASSWORD }}` |
+| 5 | Click | `#btn-login` | — |
+| 6 | Assert element content | `#view-title` | *contains* `Dashboard` |
+| 7 | Assert element content | `#sb-role` | *contains* `VIEWER` |
+| 8 | Assert element present | `#k-total` | — then **Assert element content** `#k-total` *matches regex* `^[0-9]+$` (KPIs loaded) |
+| 9 | **Assert element not present** | `a[data-view="chaos"]` | Chaos Control link absent |
+| 10 | **Assert element not present** | `a[data-view="aws"]` | AWS Resources link absent |
+| 11 | **Assert element not present** | `a[data-view="architecture"]` | Architecture link absent |
+| 12 | Click | `a[data-view="flights"]` | — |
+| 13 | Assert element content | `#view-title` | *contains* `Flights` |
+| 14 | Assert element present | `#flights-body tr td.fn` | flight rows rendered (not the error row) |
+| 15 | Click | `a[data-view="notams"]` | — |
+| 16 | Assert element present | `#notam-grid .notam` | at least one NOTAM card |
+| 17 | Click | `a[data-view="events"]` | — |
+| 18 | Assert element content | `#view-title` | *contains* `Ops Pipeline` |
+| 19 | Assert element content | `#pq-dlq` | *matches regex* `^[0-9]+$` (queue depth loaded) |
+| 20 | **Go to URL** | `https://<site>/#chaos` | try to open a platform page directly |
+| 21 | Assert element content | `#view-title` | *contains* `Dashboard` (redirected) |
+| 22 | Click | `.btn-logout` | — |
+| 23 | Assert element present | `#btn-login` | back on the login page |
+
+> If step 14's selector doesn't match your build, open Flights in your browser's dev tools and use
+> any selector that exists only when rows rendered, e.g. `#flights-body tr:nth-child(3)`.
+
+**3. Save**, run it once (**Run Test Now**), and open the result. Each step has a screenshot.
+**Monitor settings:** name `[AvionPulse] Viewer journey (browser)`, priority **P2**, message
+*"A viewer can't complete the operations journey, or saw platform pages. Open the failed step's
+screenshot."*
+
+**What makes it fail (good tests for it)**
+
+| Fault | Step that fails |
+|---|---|
+| `ssm_config_poisoned` | 6–8 (Dashboard summary returns 500) and 14 |
+| `api_integration_broken` | 5–6 (login works, but every data page fails) |
+| `random_500s` | Intermittent, usually 8, 14 or 16; retries may hide it |
+| `s3_missing_object` | 16 (NOTAM error card instead of cards) |
+| `kms_key_disabled` / `sqs_send_denied` | None. Viewers don't enqueue, so this journey stays green. That's a useful lesson in what a synthetic does *not* cover |
+| A regression that shows platform links to viewers | 9–11 |
+| `status_page_error` | None. That's what §10.2 and §10.3 are for |
+
+### 10.5 Proving all three with the fault
+
+1. Confirm all three are green (*Synthetic Tests* list; *Monitors* → `tag:check:status-page`).
+2. Chaos → Edge → **Status Page 500** → on, TTL 15 min.
+3. Within ~1 min the **HTTP check** monitor alerts (Monitor A, and B). Within ≤ 5 min the
+   **Synthetic API test** fails. The **browser test** stays green: the fault breaks only the status page.
+4. In APM, `service:avionpulse resource_name:"GET /status"` shows the 500s. In Logs,
+   `"[FAULT] status_page_error"` shows them. The Events stream shows the chaos toggle at the start.
+5. Turn the fault off (or let it expire). The HTTP check recovers in ~30 s; the API test recovers on its next run.
+
+### 10.6 Cost notes
+
+* **Synthetics** are billed per run: API tests per 10,000 runs, browser tests per 1,000 runs (much
+  more). At the settings above: API test 2 locations × every 5 min ≈ 17,000 runs/month; browser
+  test 1 location × every 15 min ≈ 2,900 runs/month. Lower the frequency or pause the tests
+  between demos to save.
+* **HTTP check** is free with the Agent, but the probe Agent counts as an infrastructure host.
+* **AWS side:** every probe is a Lambda invocation and an API Gateway request. 30 s + 60 s HTTP
+  checks plus the synthetics add about 135,000 requests/month (≈ $0.14 API Gateway beyond the
+  free tier), and DynamoDB reads stay low thanks to the 15 s cache.

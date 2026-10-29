@@ -61,17 +61,15 @@
         <div id="login-error" class="alert-error" hidden></div>
         <div class="form-group">
           <label for="inp-user">Username</label>
-          <input id="inp-user" type="text" placeholder="admin" autocomplete="username" required/>
+          <input id="inp-user" type="text" placeholder="username" autocomplete="username" required/>
         </div>
         <div class="form-group">
           <label for="inp-pass">Password</label>
           <input id="inp-pass" type="password" placeholder="••••••••" autocomplete="current-password" required/>
         </div>
         <button id="btn-login" class="btn-primary" type="submit">AUTHENTICATE</button>
-        <div class="login-demo">
-          Demo: <code>admin / aviondash123</code><br>
-          <code>operator / operator123</code> · <code>viewer / viewer123</code>
-        </div>
+        <!-- No user names or passwords on the login page (local or deployed): see README → Users and roles. -->
+        <div class="login-status"><a href="/status">● System status</a></div>
       </form>
     </div>
   </div>
@@ -93,10 +91,10 @@
     <a class="nav-item" data-view="notams"    href="#notams"><span class="ni">⚑</span>NOTAMs</a>
     <a class="nav-item" data-view="integrations" href="#integrations"><span class="ni">⧉</span>Integrations</a>
     <a class="nav-item" data-view="gates"     href="#gates"><span class="ni">▦</span>Gates <span class="nav-tag" id="nav-classic-tag">CLASSIC</span></a>
-    <div class="nav-label">PLATFORM</div>
-    <a class="nav-item" data-view="aws" href="#aws"><span class="ni">☁</span>AWS Resources</a>
-    <a class="nav-item" data-view="architecture" href="#architecture"><span class="ni">⌬</span>Architecture &amp; Cost</a>
-    <a class="nav-item nav-chaos" data-view="chaos" href="#chaos"><span class="ni">⚡</span>Chaos Control</a>
+    <div class="nav-label nav-platform">PLATFORM</div>
+    <a class="nav-item nav-platform" data-view="aws" href="#aws"><span class="ni">☁</span>AWS Resources</a>
+    <a class="nav-item nav-platform" data-view="architecture" href="#architecture"><span class="ni">⌬</span>Architecture &amp; Cost</a>
+    <a class="nav-item nav-chaos nav-platform" data-view="chaos" href="#chaos"><span class="ni">⚡</span>Chaos Control</a>
     <div class="sidebar-footer">
       <div class="user-chip">
         <span>👤</span><span id="sb-user">—</span>
@@ -146,7 +144,7 @@
             <div class="h-row"><span>DynamoDB read</span><span class="h-val" id="h-ddb">—</span></div>
             <div class="h-row"><span>Data freshness</span><span class="h-val" id="h-age">—</span></div>
             <div class="h-row"><span>Fleet utilisation</span><span class="h-val" id="h-util">—</span></div>
-            <div class="h-row"><span>Active faults</span><span class="h-val" id="h-faults">—</span></div>
+            <div class="h-row platform-only"><span>Active faults</span><span class="h-val" id="h-faults">—</span></div>
           </div>
         </div>
       </div>

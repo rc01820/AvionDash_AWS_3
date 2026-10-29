@@ -2,7 +2,7 @@
 
 Local mode runs the whole application on your own computer, **with no AWS account, no credentials
 and no cost**. Every AWS service is replaced by an in-memory stand-in, so you can click through every
-page, switch on all 49 chaos faults, and launch and tear down the Classic tier, all in a few seconds.
+page, switch on all 50 chaos faults, and launch and tear down the Classic tier, all in a few seconds.
 
 Use it to:
 
@@ -63,13 +63,18 @@ You should see:
 AvionPulse local -> http://localhost:8080  (admin / aviondash123)
 ```
 
-Open **http://localhost:8080** and sign in:
+Open **http://localhost:8080** and sign in with one of these demo users. The login page doesn't
+list them, in local mode or on a deployed site; they're documented here and in the
+[README](../README.md#users-and-roles).
 
-| User | Password | Can do |
-|---|---|---|
-| `admin` | `aviondash123` | Everything: chaos faults, Classic tier launch/teardown |
-| `operator` | `operator123` | Raise maintenance requests |
-| `viewer` | `viewer123` | Read only |
+| User | Password | Sees | Can do |
+|---|---|---|---|
+| `admin` | `aviondash123` | Operations + Platform pages | Everything: chaos faults, Classic tier launch/teardown |
+| `operator` | `operator123` | Operations + Platform pages (read only) | Raise maintenance requests |
+| `viewer` | `viewer123` | **Operations pages only** (no AWS Resources, Architecture or Chaos) | Read only |
+
+The **public status page** is at **http://localhost:8080/status** (no login; JSON at
+`/api/status`). The *Status Page 500* fault makes both return HTTP 500 locally too.
 
 **Options**
 

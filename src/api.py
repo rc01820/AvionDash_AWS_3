@@ -21,6 +21,7 @@ import chaos
 import classic
 import config
 import infra
+import status
 import telemetry
 from store import err_code, get_store
 
@@ -93,6 +94,10 @@ def respond(status, body, extra_headers=None):
         "access-control-allow-headers": "content-type,x-avion-token,authorization",
         "access-control-allow-methods": "GET,POST,OPTIONS",
     }
+    if isinstance(body, str):  # server-rendered HTML (the public /status page)
+        headers["content-type"] = "text/html; charset=utf-8"
+        headers.update(extra_headers or {})
+        return {"statusCode": status, "headers": headers, "body": body}
     headers.update(extra_headers or {})
     return {"statusCode": status, "headers": headers, "body": json.dumps(body, default=str)}
 
@@ -376,6 +381,12 @@ def r_event_submit(req):
     return 202, {"status": "queued", "queue": "avionpulse-events"}
 
 
+@route("GET", "/api/events/queue", role="viewer")
+def r_event_queue(req):
+    """Queue and DLQ depth for the Ops Pipeline page (viewers can't call /api/system)."""
+    return 200, infra.queue_depths()
+
+
 @route("GET", "/api/notams", role="viewer")
 def r_notams(req):
     key = "data/notams-v2.json" if chaos.active("s3_missing_object") else "data/notams.json"
@@ -401,7 +412,7 @@ def r_weather(req):
     return 200, {"provider": "avionpulse-synthetic-metar", "observations": out}
 
 
-@route("GET", "/api/system", role="viewer")
+@route("GET", "/api/system", role="operator")
 def r_system(req):
     try:
         queues = infra.queue_depths()
@@ -431,6 +442,32 @@ def r_system(req):
 
 
 
+# ── Routes: public status page ────────────────────────────────────────────
+def _status_fault(req):
+    if chaos.active("status_page_error"):
+        log.error("[FAULT] status_page_error returning 500 on %s", req.path)
+        raise status.StatusPageFault("injected status page failure")
+
+
+@route("GET", "/status")
+def r_status_page(req):
+    try:
+        _status_fault(req)
+        return 200, status.render_html(status.compute())
+    except status.StatusPageFault:
+        return 500, status.render_error_html()
+
+
+@route("GET", "/api/status")
+def r_status_json(req):
+    try:
+        _status_fault(req)
+    except status.StatusPageFault:
+        return 500, {"detail": "Status page unavailable", "error_code": "StatusPageFault",
+                     "request_id": req.request_id}
+    return 200, status.compute()
+
+
 # ── Routes: v3 integrations, AWS drift, Classic tier ──────────────────────
 @route("GET", "/api/integrations", role="viewer")
 def r_integrations(req):
@@ -457,14 +494,14 @@ def _clean_keep_sk(items):
     return [{k: v for k, v in i.items() if k != "PK"} for i in items]
 
 
-@route("GET", "/api/aws/drift", role="viewer", exempt=True)
+@route("GET", "/api/aws/drift", role="operator", exempt=True)
 def r_drift(req):
     rows = infra.drift() + classic.drift_rows()
     return 200, {"rows": rows, "drifted": sum(1 for r in rows if r["status"] != "ok"),
                  "checked_at": int(time.time())}
 
 
-@route("GET", "/api/classic/status", role="viewer", exempt=True)
+@route("GET", "/api/classic/status", role="operator", exempt=True)
 def r_classic_status(req):
     return 200, classic.status()
 
@@ -490,14 +527,14 @@ def r_gates(req):
     return 200, classic.gates()
 
 # ── Routes: chaos ─────────────────────────────────────────────────────────
-@route("GET", "/api/chaos/status", role="viewer", exempt=True)
+@route("GET", "/api/chaos/status", role="operator", exempt=True)
 def r_chaos_status(req):
     st = chaos.status()
     return 200, {"faults": {k: v["enabled"] for k, v in st.items()}, "details": st,
                  "ttl_default_min": config.FAULT_TTL_DEFAULT_MIN}
 
 
-@route("GET", "/api/chaos/catalog", role="viewer", exempt=True)
+@route("GET", "/api/chaos/catalog", role="operator", exempt=True)
 def r_chaos_catalog(req):
     return 200, {"faults": chaos.CATALOG, "tiers": chaos.TIERS}
 
@@ -577,6 +614,8 @@ def _dispatch(req):
 
 def _route_tag(path):
     parts = [p for p in path.split("/") if p][:3]
+    if parts == ["status"]:
+        return "/status"
     if len(parts) == 3 and parts[1] in ("flights", "chaos", "classic"):
         parts[2] = "{id}"
     return "/" + "/".join(parts)

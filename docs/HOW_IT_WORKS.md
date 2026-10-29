@@ -60,8 +60,9 @@ AvionPulse is a fictional airline operations centre. It runs as **two CloudForma
 
 ## 2. Request path
 
-1. **CloudFront** serves the single-page app from S3 and forwards `/api/*` to API Gateway (caching
-   disabled, all viewer headers forwarded except Host).
+1. **CloudFront** serves the single-page app from S3 and forwards `/api/*` **and `/status`** to API
+   Gateway (caching disabled, all viewer headers forwarded except Host). `/status` is the public
+   status page, rendered as HTML by the `api` function.
 2. **API Gateway HTTP API** has **two Lambda integrations** pointing at the same `api` function:
 
    | Route | Integration | Throttle | Why separate |
@@ -71,6 +72,7 @@ AvionPulse is a fictional airline operations centre. It runs as **two CloudForma
    | `ANY /api/chaos/{proxy+}` | `ControlIntegration` | 5 / 10 | You can always switch a fault off |
    | `ANY /api/classic/{proxy+}` | `ControlIntegration` | 5 / 10 | You can always tear the Classic tier down |
    | `ANY /api/aws/{proxy+}` | `ControlIntegration` | 2 / 4 | Drift panel (many Describe calls) |
+   | `GET /status` | `ApiIntegration` | default | Public status page. On the data integration on purpose, so `api_integration_broken` takes it down like a real outage would |
 
 3. **`api.handler`** (`src/api.py`) is a small router:
    * `Request` wraps the API Gateway v2 event (method, path, query, headers, body).
@@ -99,17 +101,20 @@ AvionPulse is a fictional airline operations centre. It runs as **two CloudForma
 
 | Method & path | Role | What it does |
 |---|---|---|
+| `GET /status` (HTML), `GET /api/status` (JSON) | public | Status page: component health, 15 s cache; `status_page_error` → 500 (`src/status.py`) |
 | `GET /api/health`, `/api/health/deep` | public | Liveness; deep checks DynamoDB, SQS and S3 individually |
 | `POST /api/auth/token`, `GET /api/auth/me` | public / viewer | PBKDF2 login → HS256 JWT (8 h) |
 | `GET /api/dashboard/public-stats`, `/summary` | public / viewer | KPIs, busiest origins, data freshness |
 | `GET /api/flights[/{number}]`, `/aircraft`, `/airports` | viewer | Registry and flight board |
 | `GET`/`POST /api/events` | viewer / operator | Processed events / enqueue a maintenance request (202) |
-| `GET /api/notams`, `/weather`, `/system` | viewer | S3 read, synthetic METAR, container info |
+| `GET /api/notams`, `/weather` | viewer | S3 read, synthetic METAR |
+| `GET /api/events/queue` | viewer | Queue and DLQ depth for the Ops Pipeline page |
+| `GET /api/system` | operator | Container info, queues (Architecture page) |
 | `GET /api/integrations` | viewer | Last-seen counters of the five integration channels |
 | `GET /api/gates` | viewer | Proxy to the Classic gate service through the ALB |
-| `GET /api/aws/drift` | viewer | Baseline vs. current for every chaos-controlled setting |
-| `GET /api/classic/status`; `POST /api/classic/launch`, `/extend`, `/teardown` | viewer; admin | Classic stack lifecycle |
-| `GET /api/chaos/status`, `/catalog`; `POST /api/chaos/{name}/toggle`, `/reset-all` | viewer; admin | Chaos engine |
+| `GET /api/aws/drift` | operator | Baseline vs. current for every chaos-controlled setting |
+| `GET /api/classic/status`; `POST /api/classic/launch`, `/extend`, `/teardown` | operator; admin | Classic stack lifecycle |
+| `GET /api/chaos/status`, `/catalog`; `POST /api/chaos/{name}/toggle`, `/reset-all` | operator; admin | Chaos engine |
 
 ---
 
@@ -185,7 +190,7 @@ The processor recognises its input by shape: `task` key (Step Functions), `event
 
 ## 6. The chaos engine
 
-`src/chaos.py` holds the **catalog** (49 entries) and the state logic. `src/infra.py` and
+`src/chaos.py` holds the **catalog** (50 entries) and the state logic. `src/infra.py` and
 `src/classic.py` hold the AWS calls.
 
 **Catalog entry fields:** `label`, `tier`, `severity`, `aws`, `icon`, `description`,
@@ -359,8 +364,19 @@ until started, and they always find whatever the current Classic stack contains.
 | **`FisRole`** | AWS-managed FIS EC2 / network / RDS / SSM access policies | — |
 | **`StatesRole`** | Invoke the processor | — |
 
-**App users.** PBKDF2-hashed passwords, HS256 JWTs signed with a per-deployment secret. Only
-`admin` can toggle faults or launch the Classic tier. **Set `AdminPassword`.**
+**App users.** PBKDF2-hashed passwords, HS256 JWTs signed with a per-deployment secret. Roles
+are ordered `viewer` < `operator` < `admin`:
+
+| Role | Operations pages | Platform pages (AWS Resources, Architecture & Cost, Chaos Control) | Writes |
+|---|---|---|---|
+| `viewer` | yes | **no**: removed from the page, redirected to Dashboard, API returns 403 | none |
+| `operator` | yes | yes, read only | maintenance requests |
+| `admin` | yes | yes | chaos faults, Classic tier lifecycle |
+
+Enforcement is on both sides: `@route(..., role="operator")` on the platform endpoints, and
+`app.js` removes the platform links and fault badge for viewers. The login page shows no
+credentials, deployed or local; the demo users are documented in the README. **Set `AdminPassword`.** The public status page is the
+only page that needs no login, and it publishes component health only.
 
 **Network.** The ALB is public, but the listener only forwards requests that carry the shared secret
 (generated at launch, held in DynamoDB). Instances accept traffic only from the ALB. RDS is not
@@ -434,6 +450,7 @@ The Chaos page needs no change. It builds itself from `/api/chaos/catalog`.
 | `src/processor.py` | Integration consumer (Streams, SNS, EventBridge, Step Functions) |
 | `src/store.py` | DynamoDB access + `FakeStore` |
 | `src/telemetry.py` | Logging, custom metrics, Datadog events |
+| `src/status.py` | Public status page: component checks, 15 s cache, HTML + JSON rendering |
 | `src/auth.py` | Passwords and JWTs |
 | `src/seed.py` · `src/seed_data.py` | Seed data (custom resource) |
 | `src/site_deployer.py` · `src/cfn.py` | Publishes the SPA; empties buckets on delete; custom-resource plumbing |

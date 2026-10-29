@@ -51,16 +51,34 @@ same pages, the same 23 faults and the same cost profile. On top of that, v3 add
 
 | Page | What it shows | AWS path |
 |---|---|---|
+| **Status** (`/status`, public) | Component health for anyone, no login; JSON at `/api/status` | CloudFront → API Gateway → λ |
 | Dashboard · Flights · Fleet · Airports · Ops Pipeline · NOTAMs | as in v2 | DynamoDB, SQS, S3 |
 | **Integrations** | Five pipes and whether each is flowing: stream, bus, SNS, workflow, recorder | Streams, EventBridge, SNS, Step Functions, S3 |
 | **Gates** (Classic) | Gate board served by EC2 from RDS | λ → ALB → EC2 → RDS (one distributed trace) |
 | **AWS Resources** | Every chaos-controlled setting: template baseline vs. current value | Describe/Get APIs across 12 services |
 | Architecture & Cost | Core + v3 diagrams, cost model including Classic hourly rates | `/api/system` |
-| **Chaos Control** | 49 faults in 11 tiers, Classic tier launch/extend/teardown card | everything above |
+| **Chaos Control** | 50 faults in 11 tiers, Classic tier launch/extend/teardown card | everything above |
 
-Demo users: `admin / aviondash123` (chaos and Classic launch), `operator / operator123`,
-`viewer / viewer123`. **Set `AdminPassword` when you deploy.** The admin user can start paid
-EC2 and RDS resources.
+The sidebar groups the pages into **Operations** (Dashboard → Gates) and **Platform** (AWS
+Resources, Architecture & Cost, Chaos Control).
+
+## Users and roles
+
+| User | Password | Role | Sees | Can do |
+|---|---|---|---|---|
+| `admin` | `aviondash123`, or your `AdminPassword` | admin | Operations **and** Platform pages | Everything: switch chaos faults, launch / extend / tear down the Classic tier |
+| `operator` | `operator123` | operator | Operations **and** Platform pages (read only) | Raise maintenance requests |
+| `viewer` | `viewer123` | viewer | **Operations pages only** | Read only |
+
+* **Viewers can't see the Platform pages.** The links are removed from the page and the top-bar
+  fault badge is hidden; typing `#chaos`, `#aws` or `#architecture` lands on the Dashboard. The API
+  enforces it too: `/api/system`, `/api/aws/drift`, `/api/chaos/status|catalog` and
+  `/api/classic/status` return **403** for viewers.
+* **The login page never shows user names or passwords**, deployed or in local mode. They're
+  listed only here and in the docs.
+* **Set `AdminPassword` when you deploy.** The admin user can start paid EC2 and RDS resources.
+  The operator and viewer passwords are fixed demo values (`src/seed_data.py`).
+* The **status page** (`/status`) needs no login at all.
 
 ## Quick start
 
@@ -70,14 +88,14 @@ EC2 and RDS resources.
 python3 scripts/local_server.py
 ```
 
-(Windows: `python scripts\local_server.py`.) Open http://localhost:8080 and sign in as
-`admin` / `aviondash123`.
+(Windows: `python scripts\local_server.py`.) Open http://localhost:8080 and sign in with a demo user from
+[Users and roles](#users-and-roles) (e.g. `admin` / `aviondash123`). The login page doesn't list them.
 
 Local mode runs the **real application code** with in-memory stand-ins for every AWS service:
 DynamoDB, SQS, S3, SNS, EventBridge, Step Functions, SSM, KMS, IAM, CloudFormation, EC2, ALB, RDS
 and FIS. Nothing touches AWS and nothing is billed; you need only Python 3.9+.
 
-* All 49 faults work. Most produce the same HTTP errors and AWS Resources drift as in AWS.
+* All 50 faults work. Most produce the same HTTP errors and AWS Resources drift as in AWS.
 * The Classic tier "launches" in about 45 s (12–20 min in AWS) and serves a simulated gate board.
 * Simulator, worker and janitor run as background threads; the terminal shows each AWS call that
   *would* have been made (`[LOCAL] kms.disable_key …`).
@@ -140,11 +158,11 @@ the Classic stack. It doesn't need the app.
 
 Full breakdown: **[docs/COST.md](docs/COST.md)**.
 
-## Chaos faults (49)
+## Chaos faults (50)
 
 | Tier | Faults |
 |---|---|
-| Edge | `api_throttling`†, `latency_spike`, `random_500s`, `health_check_fail` |
+| Edge | `api_throttling`†, `latency_spike`, `random_500s`, `health_check_fail`, `status_page_error` |
 | Compute | `lambda_timeout`, `lambda_oom`, `memory_leak`, `cpu_burn`, `cold_start_storm`†, `worker_throttle`† |
 | Data | `dynamodb_throttle`, `full_table_scan`, `n_plus_one`, `iam_access_denied`, `s3_missing_object` |
 | Async | `sqs_poison_pill`, `queue_backlog`†, `simulator_crash`, `downstream_timeout` |
@@ -170,7 +188,7 @@ Full breakdown: **[docs/COST.md](docs/COST.md)**.
 | [docs/LOCAL_MODE.md](docs/LOCAL_MODE.md) | Try everything on your own machine with no AWS account; understand what's simulated |
 | [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) | Understand the architecture, request path, chaos engine, Classic lifecycle, IAM model and telemetry; add a new fault |
 | [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) | Deploy to AWS: installation scenarios (S1–S9), console and CLI paths, parameters, verification, day-2, teardown, troubleshooting |
-| [docs/DATADOG_SETUP.md](docs/DATADOG_SETUP.md) | Instrument, connect the AWS integration and CloudTrail, create a monitor for each of the 49 faults, import the dashboard |
+| [docs/DATADOG_SETUP.md](docs/DATADOG_SETUP.md) | Instrument, connect the AWS integration and CloudTrail, set up the status-page HTTP check and Synthetics (API + viewer browser test), create a monitor for each of the 50 faults, import the dashboard |
 | [docs/FAULT_SCENARIOS.md](docs/FAULT_SCENARIOS.md) | Know what each fault does and the signal it produces; run a demo storyline |
 | [docs/AWS_RUNBOOKS.md](docs/AWS_RUNBOOKS.md) | Rehearse AWS failures the app deliberately can't trigger (Health events, CloudTrail, GuardDuty, quotas…) |
 | [docs/COST.md](docs/COST.md) | See what the core and Classic tiers cost and what keeps them cheap |
@@ -184,7 +202,7 @@ cloudformation/
   classic.yaml         Classic stack (on demand): VPC, ALB, EC2 ASG, RDS — launched by the api function
 src/
   api.py               API Lambda: routing, auth, request-path faults, Classic + drift routes
-  chaos.py             Fault catalog (49), shared state, infra dispatch, TTL janitor logic
+  chaos.py             Fault catalog (50), shared state, infra dispatch, TTL janitor logic
   infra.py             AWS control-plane calls for every serverless infra fault + drift read-back
   classic.py           Classic stack lifecycle, auto-shutdown schedule, Classic/FIS faults, gate proxy
   janitor.py           Scheduled janitor Lambda (own rule — no fault can disable it)

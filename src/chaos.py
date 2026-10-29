@@ -69,6 +69,13 @@ CATALOG = {
         "description": "/api/health returns 503. Everything else keeps working — only an external probe notices.",
         "datadog_signal": "Synthetics API test FAIL → downtime alert",
     },
+    "status_page_error": {
+        "label": "Status Page 500", "tier": "edge", "severity": "critical", "aws": "CloudFront + API Gateway + Lambda",
+        "infra": False, "icon": "📟",
+        "description": "The public status page (/status, and its JSON at /api/status) returns HTTP 500. The app itself keeps "
+                       "working, so only probes that watch the status page notice: a Synthetics HTTP test and an Agent HTTP check.",
+        "datadog_signal": "Synthetics API test on /status FAIL; Agent http_check http.can_connect CRITICAL / network.http.response_time gap",
+    },
     # ── Compute ──────────────────────────────────────────────────────────
     "lambda_timeout": {
         "label": "Lambda Timeout", "tier": "compute", "severity": "critical", "aws": "Lambda",

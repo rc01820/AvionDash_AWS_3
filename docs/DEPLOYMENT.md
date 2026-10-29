@@ -141,7 +141,7 @@ before running the scripts. Set `AWS_REGION` the same way if you don't use `us-e
 python scripts/local_server.py
 ```
 
-Open http://localhost:8080. It's the full UI, all 49 faults and a simulated Classic tier
+Open http://localhost:8080. It's the full UI, all 50 faults and a simulated Classic tier
 against in-memory stand-ins for every AWS service, with no account and no cost. See
 **[LOCAL_MODE.md](LOCAL_MODE.md)** for what's simulated and how each fault behaves locally.
 
@@ -255,8 +255,10 @@ Open the **Events** tab and refresh. The order is roughly:
 
 ### Step A5 — Open the site
 
-**Outputs** tab → **SiteUrl** (`https://dxxxxxxxxxxxx.cloudfront.net`). Sign in with `admin` and
-either your `AdminPassword` or the demo password `aviondash123`. Then go to [section 9](#9-verify-the-deployment).
+**Outputs** tab → **SiteUrl** (`https://dxxxxxxxxxxxx.cloudfront.net`). The login page doesn't
+list any users (deployed or local). Sign in with `admin` and either your `AdminPassword` or the demo
+password `aviondash123` (all users: [README → Users and roles](../README.md#users-and-roles)).
+**StatusPageUrl** is the public status page (no login). Then go to [section 9](#9-verify-the-deployment).
 
 ---
 
@@ -425,8 +427,13 @@ Replace `<site>` with the `SiteUrl` output.
 | 15 | AWS Resources | *AWS Resources* page | Every row **✓ OK** (any ERROR row means a missing permission; see Troubleshooting) |
 | 16 | v3 infra chaos | Toggle **Scheduler Rule Disabled** on, then check `aws events describe-rule --name avionpulse-simulator-tick` | `"State": "DISABLED"`; AWS Resources shows DRIFT; toggle off → `ENABLED`, OK |
 | 17 | Classic tier (optional, costs ≈ $0.15) | Chaos → Classic card → Minimal, 1 h → Launch; wait for ONLINE; open *Gates*; **Tear down** | Gate board loads ("served by avionpulse-gates") within ~5 min of ONLINE; teardown returns the card to OFFLINE with the session cost |
+| 18 | Status page | Open `https://<site>/status` **without signing in**; `curl -s https://<site>/api/status` | "All systems operational" (Gate services shows *Not deployed*); JSON with `"overall_status": "operational"` |
+| 19 | Status page fault | Chaos → Edge → **Status Page 500** on → reload `/status` → off | HTTP **500** "status page is unavailable", then 200 again |
+| 20 | Login page | Open `https://<site>/` signed out | No user names or passwords shown; *● System status* link present |
+| 21 | Viewer restriction | Sign in as `viewer` / `viewer123`; then try `https://<site>/#chaos` | Sidebar shows only Operations pages; no fault badge; `#chaos` lands on Dashboard. `curl -H "X-Avion-Token: <viewer token>" https://<site>/api/chaos/status` → **403** |
 
-If you enabled Datadog, continue with [DATADOG_SETUP.md](DATADOG_SETUP.md) section 8.
+If you enabled Datadog, continue with [DATADOG_SETUP.md](DATADOG_SETUP.md) section 8, then
+section 10 for the status-page HTTP check and the Synthetic tests.
 
 ---
 
@@ -497,7 +504,17 @@ at 8 hours and one stack at a time). If anyone other than you might find the URL
 | Restrict by IP with AWS WAF | ~$5+/month | Attach a WAF web ACL with an IP set to the distribution (outside this template, to keep the default free) |
 
 The `operator` and `viewer` demo users can't change anything in AWS (operators can only enqueue
-maintenance requests).
+maintenance requests). **Viewers can't even see the platform pages** (AWS Resources, Architecture &
+Cost, Chaos Control): the links are removed and those API routes return 403. Use `viewer` for
+anyone who only needs to watch operations, and for the Synthetic browser test
+([DATADOG_SETUP.md §10.4](DATADOG_SETUP.md#104-synthetic-browser-test-as-the-viewer-user)).
+
+The login page never prints credentials, deployed or in [local mode](LOCAL_MODE.md).
+The demo passwords are still published in this repository, so changing `AdminPassword` is what
+actually protects the admin functions.
+
+The **public status page** (`/status`) shows component health only: no fault names, users,
+resource names or account details.
 
 ---
 

@@ -145,6 +145,11 @@ email if something slips through anyway.
   **infrastructure hosts** (and APM hosts) while they exist. Datadog bills hosts on the
   high-water mark excluding the top 1% of hours, so a few hours a month may barely register;
   check your contract. RDS Database Monitoring is not enabled by default.
+- **Synthetics and the HTTP check** — the status-page API test (2 locations, every 5 min ≈ 17k
+  runs/month) and the viewer browser test (1 location, every 15 min ≈ 2.9k runs/month) are billed
+  per run by Datadog. Pause them between demos. The Agent HTTP check is free, but its probe Agent
+  counts as a host. On the AWS side the probes add ~135k API Gateway requests a month (≈ $0.14
+  without free tier). Details: [DATADOG_SETUP.md §10.6](DATADOG_SETUP.md#106-cost-notes).
 - **CloudWatch polling for v3 namespaces** — adding SNS, States, ApplicationELB, EC2,
   AutoScaling and RDS to the AWS integration adds a few cents a month in `GetMetricData`. AvionPulse keeps metric tags low-cardinality
   (route, status class, severity) for this reason.

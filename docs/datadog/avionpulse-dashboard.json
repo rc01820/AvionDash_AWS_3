@@ -276,6 +276,36 @@
                 }
               ]
             }
+          },
+          {
+            "definition": {
+              "type": "check_status",
+              "title": "Status page reachable (HTTP check)",
+              "check": "http.can_connect",
+              "grouping": "cluster",
+              "group_by": [],
+              "tags": [
+                "instance:avionpulse-status-page"
+              ]
+            }
+          },
+          {
+            "definition": {
+              "type": "timeseries",
+              "title": "Status page response time (HTTP check, s)",
+              "show_legend": true,
+              "requests": [
+                {
+                  "q": "avg:network.http.response_time{check:status-page} by {instance}",
+                  "display_type": "line"
+                }
+              ],
+              "events": [
+                {
+                  "q": "sources:avionpulse-chaos"
+                }
+              ]
+            }
           }
         ]
       }
